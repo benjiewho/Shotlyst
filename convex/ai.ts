@@ -5,6 +5,8 @@ import { api } from "./_generated/api";
 import { v } from "convex/values";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+type ShotCategory = "hook_shot" | "establishing_shot" | "action_shots" | "detail_broll";
+
 const STUB_PLAN = {
   goalSummary:
     "Create engaging short-form travel content that captures the location and your experience.",
@@ -15,16 +17,19 @@ const STUB_PLAN = {
   shots: [
     {
       type: "must" as const,
+      shotCategory: "establishing_shot" as ShotCategory,
       title: "Establishing shot",
       description: "Wide shot of the location to set the scene.",
     },
     {
       type: "must" as const,
+      shotCategory: "detail_broll" as ShotCategory,
       title: "Detail or product",
       description: "Close-up of a key element (dish, view, or activity).",
     },
     {
       type: "nice" as const,
+      shotCategory: "action_shots" as ShotCategory,
       title: "Reaction or moment",
       description: "Genuine reaction or transition to keep it authentic.",
     },
@@ -33,9 +38,19 @@ const STUB_PLAN = {
 
 type ShotInput = {
   type: "must" | "nice" | "optional";
+  shotCategory?: ShotCategory;
   title: string;
   description: string;
 };
+
+function titleToCategory(title: string): ShotCategory {
+  const t = title.toLowerCase();
+  if (t.includes("hook")) return "hook_shot";
+  if (t.includes("establishing") || t.includes("establish")) return "establishing_shot";
+  if (t.includes("action") || t.includes("reaction") || t.includes("moment")) return "action_shots";
+  if (t.includes("detail") || t.includes("b-roll") || t.includes("product")) return "detail_broll";
+  return "establishing_shot";
+}
 
 function parsePlanFromGemini(text: string): {
   goalSummary: string;
@@ -52,15 +67,26 @@ function parsePlanFromGemini(text: string): {
     recommendedStyle?: string;
     shots?: { type?: string; title?: string; description?: string }[];
   };
-  const shots: ShotInput[] = (parsed.shots ?? []).map((s, i) => ({
-    type: (s.type === "optional" || s.type === "nice" ? s.type : "must") as
-      | "must"
-      | "nice"
-      | "optional",
-    title: typeof s.title === "string" ? s.title : `Shot ${i + 1}`,
-    description:
-      typeof s.description === "string" ? s.description : "No description.",
-  }));
+  const shots: ShotInput[] = (parsed.shots ?? []).map((s, i) => {
+    const title = typeof s.title === "string" ? s.title : `Shot ${i + 1}`;
+    const shotCategory =
+      (s as { shotCategory?: string }).shotCategory &&
+      ["hook_shot", "establishing_shot", "action_shots", "detail_broll"].includes(
+        (s as { shotCategory: string }).shotCategory
+      )
+        ? ((s as { shotCategory: string }).shotCategory as ShotCategory)
+        : titleToCategory(title);
+    return {
+      type: (s.type === "optional" || s.type === "nice" ? s.type : "must") as
+        | "must"
+        | "nice"
+        | "optional",
+      shotCategory,
+      title,
+      description:
+        typeof s.description === "string" ? s.description : "No description.",
+    };
+  });
   return {
     goalSummary: typeof parsed.goalSummary === "string" ? parsed.goalSummary : "",
     suggestedHook:
@@ -129,6 +155,7 @@ Project brief:
       projectId: args.projectId,
       shots: plan.shots.map((s, i) => ({
         type: s.type,
+        shotCategory: s.shotCategory ?? titleToCategory(s.title),
         title: s.title,
         description: s.description,
         order: i,

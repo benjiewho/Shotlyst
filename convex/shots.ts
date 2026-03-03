@@ -14,6 +14,13 @@ const shotType = v.union(
   v.literal("optional")
 );
 
+const shotCategory = v.union(
+  v.literal("hook_shot"),
+  v.literal("establishing_shot"),
+  v.literal("action_shots"),
+  v.literal("detail_broll")
+);
+
 export const listByProject = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
@@ -35,6 +42,7 @@ export const createFromPlan = mutation({
     shots: v.array(
       v.object({
         type: shotType,
+        shotCategory: v.optional(shotCategory),
         title: v.string(),
         description: v.string(),
         order: v.number(),
@@ -51,6 +59,7 @@ export const createFromPlan = mutation({
       const id = await ctx.db.insert("shots", {
         projectId: args.projectId,
         type: s.type,
+        shotCategory: s.shotCategory,
         title: s.title,
         description: s.description,
         order: s.order,
@@ -59,6 +68,73 @@ export const createFromPlan = mutation({
       ids.push(id);
     }
     return ids;
+  },
+});
+
+export const updateShot = mutation({
+  args: {
+    shotId: v.id("shots"),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    type: v.optional(shotType),
+    shotCategory: v.optional(shotCategory),
+    sceneNotes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const shot = await ctx.db.get(args.shotId);
+    if (!shot) throw new Error("Shot not found");
+    const project = await ctx.db.get(shot.projectId);
+    if (!project || project.userId !== userId) throw new Error("Unauthorized");
+    const updates: Record<string, unknown> = {};
+    if (args.title !== undefined) updates.title = args.title;
+    if (args.description !== undefined) updates.description = args.description;
+    if (args.type !== undefined) updates.type = args.type;
+    if (args.shotCategory !== undefined) updates.shotCategory = args.shotCategory;
+    if (args.sceneNotes !== undefined) updates.sceneNotes = args.sceneNotes;
+    if (Object.keys(updates).length > 0) await ctx.db.patch(args.shotId, updates);
+    return args.shotId;
+  },
+});
+
+export const remove = mutation({
+  args: { shotId: v.id("shots") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const shot = await ctx.db.get(args.shotId);
+    if (!shot) throw new Error("Shot not found");
+    const project = await ctx.db.get(shot.projectId);
+    if (!project || project.userId !== userId) throw new Error("Unauthorized");
+    await ctx.db.delete(args.shotId);
+    return args.shotId;
+  },
+});
+
+export const createOne = mutation({
+  args: {
+    projectId: v.id("projects"),
+    type: shotType,
+    shotCategory: v.optional(shotCategory),
+    title: v.string(),
+    description: v.string(),
+    order: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== userId) throw new Error("Project not found");
+    return await ctx.db.insert("shots", {
+      projectId: args.projectId,
+      type: args.type,
+      shotCategory: args.shotCategory,
+      title: args.title,
+      description: args.description,
+      order: args.order,
+      status: "pending",
+    });
   },
 });
 

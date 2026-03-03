@@ -39,6 +39,13 @@ const shotStatus = v.union(
   v.literal("skipped")
 );
 
+const shotCategory = v.union(
+  v.literal("hook_shot"),
+  v.literal("establishing_shot"),
+  v.literal("action_shots"),
+  v.literal("detail_broll")
+);
+
 export default defineSchema({
   ...authTables,
   users: defineTable({
@@ -77,12 +84,14 @@ export default defineSchema({
   shots: defineTable({
     projectId: v.id("projects"),
     type: shotType,
+    shotCategory: v.optional(shotCategory),
     title: v.string(),
     description: v.string(),
     status: shotStatus,
     order: v.number(),
     sceneStorageId: v.optional(v.id("_storage")),
     sceneDuration: v.optional(v.number()),
+    sceneNotes: v.optional(v.string()),
   }).index("by_project_id", ["projectId"]),
 
   reflections: defineTable({

@@ -111,6 +111,27 @@ export const updatePlan = mutation({
   },
 });
 
+export const updatePlanFields = mutation({
+  args: {
+    projectId: v.id("projects"),
+    goalSummary: v.optional(v.string()),
+    suggestedHook: v.optional(v.string()),
+    recommendedStyle: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== userId) throw new Error("Project not found");
+    const updates: Record<string, unknown> = { updatedAt: Date.now() };
+    if (args.goalSummary !== undefined) updates.goalSummary = args.goalSummary;
+    if (args.suggestedHook !== undefined) updates.suggestedHook = args.suggestedHook;
+    if (args.recommendedStyle !== undefined) updates.recommendedStyle = args.recommendedStyle;
+    await ctx.db.patch(args.projectId, updates);
+    return args.projectId;
+  },
+});
+
 export const updateStatus = mutation({
   args: {
     projectId: v.id("projects"),

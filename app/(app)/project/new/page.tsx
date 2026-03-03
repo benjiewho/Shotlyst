@@ -83,6 +83,9 @@ export default function NewProjectPage() {
     }
   };
 
+  const isProfileIncomplete =
+    !user?.creatorLevel || !user?.primaryPlatform;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -94,6 +97,10 @@ export default function NewProjectPage() {
     }
     if (!trimmedGoal) {
       setError("Video goal is required.");
+      return;
+    }
+    if (audience.length === 0) {
+      setError("Select at least one audience.");
       return;
     }
     setIsSubmitting(true);
@@ -136,27 +143,24 @@ export default function NewProjectPage() {
               />
             </div>
             <div>
-              <span className="text-sm font-medium text-foreground block mb-1.5">
+              <label htmlFor="contentType" className="text-sm font-medium text-foreground block mb-1.5">
                 Content type
-              </span>
-              <div className="flex flex-wrap gap-2">
+              </label>
+              <select
+                id="contentType"
+                value={contentType}
+                onChange={(e) =>
+                  setContentType(e.target.value as "tiktok" | "youtube_short" | "travel_diary")
+                }
+                disabled={isSubmitting}
+                className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+              >
                 {CONTENT_TYPES.map(({ value, label }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setContentType(value)}
-                    disabled={isSubmitting}
-                    className={cn(
-                      "min-h-11 rounded-xl px-4 text-sm font-medium border transition-colors",
-                      contentType === value
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-background border-border text-foreground hover:bg-muted"
-                    )}
-                  >
+                  <option key={value} value={value}>
                     {label}
-                  </button>
+                  </option>
                 ))}
-              </div>
+              </select>
             </div>
             <div>
               <label htmlFor="videoGoal" className="text-sm font-medium text-foreground block mb-1.5">
@@ -174,6 +178,11 @@ export default function NewProjectPage() {
                 className="flex w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 min-h-[88px]"
                 disabled={isSubmitting}
               />
+              {isProfileIncomplete && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                  Set up your <Link href="/profile" className="underline">profile</Link> so we can tailor suggestions.
+                </p>
+              )}
               <Button
                 type="button"
                 variant="outline"
@@ -187,7 +196,7 @@ export default function NewProjectPage() {
             </div>
             <div>
               <span className="text-sm font-medium text-foreground block mb-1.5">
-                Audience
+                Audience <span className="text-muted-foreground font-normal">(select at least one)</span>
               </span>
               <div className="flex flex-wrap gap-2">
                 {AUDIENCE_OPTIONS.map((option) => (
