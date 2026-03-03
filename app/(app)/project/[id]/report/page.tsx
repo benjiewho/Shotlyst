@@ -7,6 +7,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 function buildEditGuideText(
   projectName: string,
@@ -44,6 +45,21 @@ function buildEditGuideText(
   lines.push("");
   lines.push(`Coverage: ${captured.length} of ${shots.length} shots captured.`);
   return lines.join("\n");
+}
+
+function ReportSceneThumbnail({ storageId }: { storageId: Id<"_storage"> }) {
+  const url = useQuery(api.shots.getSceneUrl, { storageId });
+  if (url === undefined) return <div className="aspect-video w-24 rounded-lg bg-muted animate-pulse" />;
+  if (url === null) return <div className="aspect-video w-24 rounded-lg bg-muted flex items-center justify-center text-xs text-muted-foreground">—</div>;
+  return (
+    <video
+      src={url}
+      className="aspect-video w-24 rounded-lg object-cover bg-muted"
+      muted
+      playsInline
+      preload="metadata"
+    />
+  );
 }
 
 export default function ReportPage() {
@@ -115,20 +131,10 @@ export default function ReportPage() {
   const capturedCount = shots.filter((s) => s.status === "captured").length;
   const totalShots = shots.length;
   const missingShots = shots.filter((s) => s.status !== "captured");
-  const strongMomentsShots = shots
-    .filter((s) => s.status === "captured")
-    .slice(0, 3);
 
   return (
     <div className="p-4 max-w-2xl mx-auto pb-8">
-      <header className="flex items-center gap-2 mb-6">
-        <Link
-          href={`/project/${project._id}/capture`}
-          className="p-2 -ml-2 text-foreground rounded-lg hover:bg-muted min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
-          aria-label="Back"
-        >
-          ←
-        </Link>
+      <header className="mb-6">
         <h1 className="text-xl font-semibold text-foreground truncate">
           {project.name}
         </h1>
@@ -176,29 +182,53 @@ export default function ReportPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Strong moments</CardTitle>
+            <CardTitle className="text-base">Shot list</CardTitle>
           </CardHeader>
           <CardContent>
-            {strongMomentsShots.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No captured clips yet. Complete shots in Capture mode to see strong moments here.
-              </p>
-            ) : (
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                {strongMomentsShots.map((s) => (
-                  <li key={s._id}>
-                    <span className="font-medium text-foreground">{s.title}</span>
-                    {s.sceneDuration != null && (
-                      <span className="ml-1">({s.sceneDuration}s)</span>
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {shots.map((s, i) => (
+                <li
+                  key={s._id}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg p-2",
+                    s.status === "captured" && "bg-green-100 dark:bg-green-900/30",
+                    s.status !== "captured" && "bg-primary/10 dark:bg-primary/20"
+                  )}
+                >
+                  {s.status === "captured" && s.sceneStorageId ? (
+                    <ReportSceneThumbnail storageId={s.sceneStorageId} />
+                  ) : (
+                    <div className="aspect-video w-24 rounded-lg bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                      No clip
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground truncate">
+                      {i + 1}. {s.title}
+                    </p>
+                    {s.status !== "captured" && (
+                      <Button variant="outline" size="sm" className="mt-1" asChild>
+                        <Link href={`/project/${project._id}/capture?shot=${s._id}`}>
+                          Capture this shot
+                        </Link>
+                      </Button>
                     )}
-                  </li>
-                ))}
-              </ul>
-            )}
+                  </div>
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
 
         <div className="flex flex-col gap-3">
+          <Button
+            className="w-full min-h-12"
+            size="lg"
+            variant="outline"
+            asChild
+          >
+            <Link href={`/project/${project._id}/capture`}>Recapture Scenes</Link>
+          </Button>
           <Button
             className="w-full min-h-12"
             size="lg"

@@ -63,6 +63,7 @@ export const create = mutation({
     contentType,
     videoGoal: v.string(),
     audience: v.array(v.string()),
+    templateId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -75,6 +76,7 @@ export const create = mutation({
       contentType: args.contentType,
       videoGoal: args.videoGoal,
       audience: args.audience,
+      templateId: args.templateId,
       status: "planning",
       planGenerated: false,
       goalSummary: "",

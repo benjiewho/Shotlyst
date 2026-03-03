@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -64,10 +63,6 @@ function DashboardContent() {
       </p>
 
       <div className="flex flex-col gap-4">
-        <Button className="w-full min-h-12" size="lg" asChild>
-          <Link href="/project/new">+ New Project</Link>
-        </Button>
-
         {listWithProgress.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <p className="text-sm">No projects yet.</p>
@@ -138,9 +133,6 @@ export default function DashboardPage() {
       <div className="p-4">
         <p className="text-muted-foreground text-sm mb-6">Hi there</p>
         <div className="flex flex-col gap-4">
-          <Button className="w-full min-h-12" size="lg" asChild>
-            <Link href="/project/new">+ New Project</Link>
-          </Button>
           <div className="text-center py-12 text-muted-foreground">
             <p className="text-sm">
               Add your Convex URL in .env.local to load projects.

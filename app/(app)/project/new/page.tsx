@@ -42,14 +42,12 @@ export default function NewProjectPage() {
   const user = useQuery(api.users.getMe);
   const createProject = useMutation(api.projects.create);
   const generatePlan = useAction(api.ai.generatePlan);
-  const suggestVideoGoal = useAction(api.ai.suggestVideoGoal);
 
   const [location, setLocation] = useState("");
   const [contentType, setContentType] = useState<"tiktok" | "youtube_short" | "travel_diary">("tiktok");
   const [videoGoal, setVideoGoal] = useState("");
   const [audience, setAudience] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSuggesting, setIsSuggesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const toggleAudience = (option: string) => {
@@ -63,28 +61,6 @@ export default function NewProjectPage() {
     user?.creatorLevel,
     location
   );
-
-  const handleGetAIIdeas = async () => {
-    setError(null);
-    setIsSuggesting(true);
-    try {
-      const { suggestions } = await suggestVideoGoal({
-        location: location.trim(),
-        contentType,
-        audience,
-        creatorLevel: user?.creatorLevel,
-        travelFocus: user?.travelFocus,
-      });
-      if (suggestions.length > 0) setVideoGoal(suggestions[0]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not get suggestions.");
-    } finally {
-      setIsSuggesting(false);
-    }
-  };
-
-  const isProfileIncomplete =
-    !user?.creatorLevel || !user?.primaryPlatform;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,7 +98,7 @@ export default function NewProjectPage() {
   };
 
   return (
-    <div className="p-4 max-w-lg mx-auto">
+    <div className="p-4 max-w-lg mx-auto pb-8">
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
           <CardHeader>
@@ -167,7 +143,7 @@ export default function NewProjectPage() {
                 Video goal
               </label>
               <p className="text-xs text-muted-foreground mb-1.5">
-                Describe what you want this video to achieve. Use &quot;Get AI ideas&quot; if you&apos;re not sure.
+                Describe what you want this video to achieve.
               </p>
               <textarea
                 id="videoGoal"
@@ -178,21 +154,6 @@ export default function NewProjectPage() {
                 className="flex w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 min-h-[88px]"
                 disabled={isSubmitting}
               />
-              {isProfileIncomplete && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                  Set up your <Link href="/profile" className="underline">profile</Link> so we can tailor suggestions.
-                </p>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-2"
-                onClick={handleGetAIIdeas}
-                disabled={isSubmitting || isSuggesting}
-              >
-                {isSuggesting ? "Getting ideas…" : "Get AI ideas"}
-              </Button>
             </div>
             <div>
               <span className="text-sm font-medium text-foreground block mb-1.5">
@@ -231,7 +192,7 @@ export default function NewProjectPage() {
             size="lg"
             disabled={isSubmitting}
           >
-            {isSubmitting ? "Creating project & generating plan…" : "Create project"}
+            {isSubmitting ? "Creating project…" : "Create project"}
           </Button>
           <Button type="button" variant="outline" size="lg" asChild disabled={isSubmitting}>
             <Link href="/dashboard">Cancel</Link>

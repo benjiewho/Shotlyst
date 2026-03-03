@@ -36,6 +36,26 @@ export const listByProject = query({
   },
 });
 
+export const getSceneUrl = query({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    return await ctx.storage.getUrl(args.storageId);
+  },
+});
+
+export const getShot = query({
+  args: { shotId: v.id("shots") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const shot = await ctx.db.get(args.shotId);
+    if (!shot) return null;
+    const project = await ctx.db.get(shot.projectId);
+    if (!project || project.userId !== userId) return null;
+    return shot;
+  },
+});
+
 export const createFromPlan = mutation({
   args: {
     projectId: v.id("projects"),
@@ -46,6 +66,7 @@ export const createFromPlan = mutation({
         title: v.string(),
         description: v.string(),
         order: v.number(),
+        purpose: v.optional(v.string()),
       })
     ),
   },
@@ -62,6 +83,7 @@ export const createFromPlan = mutation({
         shotCategory: s.shotCategory,
         title: s.title,
         description: s.description,
+        purpose: s.purpose,
         order: s.order,
         status: "pending",
       });
@@ -78,6 +100,7 @@ export const updateShot = mutation({
     description: v.optional(v.string()),
     type: v.optional(shotType),
     shotCategory: v.optional(shotCategory),
+    purpose: v.optional(v.string()),
     sceneNotes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -92,6 +115,7 @@ export const updateShot = mutation({
     if (args.description !== undefined) updates.description = args.description;
     if (args.type !== undefined) updates.type = args.type;
     if (args.shotCategory !== undefined) updates.shotCategory = args.shotCategory;
+    if (args.purpose !== undefined) updates.purpose = args.purpose;
     if (args.sceneNotes !== undefined) updates.sceneNotes = args.sceneNotes;
     if (Object.keys(updates).length > 0) await ctx.db.patch(args.shotId, updates);
     return args.shotId;
@@ -109,6 +133,25 @@ export const remove = mutation({
     if (!project || project.userId !== userId) throw new Error("Unauthorized");
     await ctx.db.delete(args.shotId);
     return args.shotId;
+  },
+});
+
+export const reorderShots = mutation({
+  args: {
+    projectId: v.id("projects"),
+    shotIds: v.array(v.id("shots")),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== userId) throw new Error("Project not found or unauthorized");
+    for (let i = 0; i < args.shotIds.length; i++) {
+      const shot = await ctx.db.get(args.shotIds[i]);
+      if (!shot || shot.projectId !== args.projectId) throw new Error("Shot not found or wrong project");
+      await ctx.db.patch(args.shotIds[i], { order: i });
+    }
+    return undefined;
   },
 });
 
@@ -182,6 +225,28 @@ export const linkScene = mutation({
       sceneDuration: args.duration,
       status: "captured",
     });
+    return args.shotId;
+  },
+});
+
+const strongMomentValidator = v.object({
+  timestampSeconds: v.number(),
+  reason: v.string(),
+});
+
+export const setStrongMoments = mutation({
+  args: {
+    shotId: v.id("shots"),
+    strongMoments: v.array(strongMomentValidator),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const shot = await ctx.db.get(args.shotId);
+    if (!shot) throw new Error("Shot not found");
+    const project = await ctx.db.get(shot.projectId);
+    if (!project || project.userId !== userId) throw new Error("Unauthorized");
+    await ctx.db.patch(args.shotId, { strongMoments: args.strongMoments });
     return args.shotId;
   },
 });

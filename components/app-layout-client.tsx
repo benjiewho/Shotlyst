@@ -2,48 +2,72 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 
-function getTopBarConfig(pathname: string): { title: string; backHref: string | null } {
+type TopBarConfig = {
+  title: string;
+  backHref: string | null;
+  projectId?: string;
+  segment?: string;
+};
+
+function getTopBarConfig(pathname: string): TopBarConfig {
   if (pathname === "/dashboard") return { title: "My Projects", backHref: null };
   if (pathname === "/profile") return { title: "Profile", backHref: "/dashboard" };
   if (pathname === "/project/new") return { title: "New Project", backHref: "/dashboard" };
-  const projectSegment = pathname.match(/^\/project\/([^/]+)/);
-  if (projectSegment) {
-    const id = projectSegment[1];
-    if (pathname.endsWith("/capture")) return { title: "Capture", backHref: `/project/${id}` };
-    if (pathname.endsWith("/report")) return { title: "Report", backHref: `/project/${id}` };
-    if (pathname.endsWith("/reflect")) return { title: "Reflection", backHref: `/project/${id}` };
-    return { title: "Plan", backHref: "/dashboard" };
+  const projectMatch = pathname.match(/^\/project\/([^/]+)/);
+  if (projectMatch) {
+    const id = projectMatch[1];
+    if (pathname.endsWith("/capture")) return { title: "Capture", backHref: `/project/${id}`, projectId: id, segment: "Capture" };
+    if (pathname.endsWith("/report")) return { title: "Report", backHref: `/project/${id}`, projectId: id, segment: "Report" };
+    if (pathname.endsWith("/reflect")) return { title: "Reflection", backHref: `/project/${id}`, projectId: id, segment: "Reflection" };
+    return { title: "Plan", backHref: "/dashboard", projectId: id, segment: "Plan" };
   }
   return { title: "Shotlyst", backHref: "/dashboard" };
 }
 
 export function AppLayoutClient({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "";
-  const { title, backHref } = getTopBarConfig(pathname);
+  const { title, backHref, projectId, segment } = getTopBarConfig(pathname);
+  const project = useQuery(
+    api.projects.get,
+    projectId ? { id: projectId as Id<"projects"> } : "skip"
+  );
+  const headerTitle =
+    projectId && segment
+      ? project
+        ? `${project.name} > ${segment}`
+        : segment
+      : title;
   const isDashboard = pathname === "/dashboard";
   const isNewProject = pathname === "/project/new";
   const isProfile = pathname === "/profile";
 
   return (
     <div className="min-h-screen flex flex-col pb-20 bg-background">
-      <header className="sticky top-0 z-40 border-b border-border bg-background pt-[env(safe-area-inset-top)]">
-        <div className="flex items-center gap-2 min-h-12 px-4">
+      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/95 backdrop-blur-sm pt-[env(safe-area-inset-top)]">
+        <div className="flex items-center min-h-11 gap-1 px-3 sm:px-4">
           {backHref ? (
-            <Link
-              href={backHref}
-              className="flex items-center gap-1 text-sm font-medium text-foreground hover:text-primary min-h-[44px] min-w-[44px] -ml-2 rounded-lg hover:bg-muted pl-2 pr-2"
-            >
-              ← Back
-            </Link>
+            <>
+              <Link
+                href={backHref}
+                className="flex items-center shrink-0 min-h-11 min-w-10 pl-1 pr-2 -ml-1 rounded-lg hover:bg-muted/80 active:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                aria-label="Go back"
+              >
+                ←
+              </Link>
+              <span className="text-sm font-medium text-foreground truncate min-w-0">
+                {headerTitle}
+              </span>
+            </>
           ) : (
-            <span className="min-w-[44px]" aria-hidden />
+            <h1 className="flex-1 text-center text-base font-semibold text-foreground truncate px-2">
+              {headerTitle}
+            </h1>
           )}
-          <h1 className="flex-1 text-center text-base font-semibold text-foreground truncate">
-            {title}
-          </h1>
-          <span className="min-w-[44px]" aria-hidden />
         </div>
       </header>
       <main className="flex-1">{children}</main>
@@ -54,10 +78,10 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
         <Link
           href="/dashboard"
           className={cn(
-            "flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] rounded-lg transition-colors",
+            "flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] rounded-xl px-3 transition-colors",
             isDashboard
-              ? "text-primary font-medium"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-primary/15 text-primary font-semibold"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
           )}
         >
           Dashboard
@@ -76,10 +100,10 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
         <Link
           href="/profile"
           className={cn(
-            "flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] rounded-lg transition-colors",
+            "flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] rounded-xl px-3 transition-colors",
             isProfile
-              ? "text-primary font-medium"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-primary/15 text-primary font-semibold"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
           )}
         >
           Profile

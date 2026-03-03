@@ -70,6 +70,7 @@ export default defineSchema({
     contentType,
     videoGoal: v.string(),
     audience: v.array(v.string()),
+    templateId: v.optional(v.string()),
     status: projectStatus,
     planGenerated: v.boolean(),
     goalSummary: v.string(),
@@ -87,11 +88,20 @@ export default defineSchema({
     shotCategory: v.optional(shotCategory),
     title: v.string(),
     description: v.string(),
+    purpose: v.optional(v.string()),
     status: shotStatus,
     order: v.number(),
     sceneStorageId: v.optional(v.id("_storage")),
     sceneDuration: v.optional(v.number()),
     sceneNotes: v.optional(v.string()),
+    strongMoments: v.optional(
+      v.array(
+        v.object({
+          timestampSeconds: v.number(),
+          reason: v.string(),
+        })
+      )
+    ),
   }).index("by_project_id", ["projectId"]),
 
   reflections: defineTable({
