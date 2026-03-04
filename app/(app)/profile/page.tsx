@@ -6,10 +6,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-
-const hasConvex =
-  typeof process.env.NEXT_PUBLIC_CONVEX_URL === "string" &&
-  process.env.NEXT_PUBLIC_CONVEX_URL.length > 0;
+import { hasConvex } from "@/lib/convex/has-convex";
 
 const CREATOR_LEVELS = [
   { value: "beginner", label: "Beginner" },

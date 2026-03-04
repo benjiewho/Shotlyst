@@ -17,6 +17,7 @@ type TopBarConfig = {
 function getTopBarConfig(pathname: string): TopBarConfig {
   if (pathname === "/dashboard") return { title: "My Projects", backHref: null };
   if (pathname === "/profile") return { title: "Profile", backHref: "/dashboard" };
+  if (pathname === "/library") return { title: "Library", backHref: "/dashboard" };
   if (pathname === "/project/new") return { title: "New Project", backHref: "/dashboard" };
   const projectMatch = pathname.match(/^\/project\/([^/]+)/);
   if (projectMatch) {
@@ -44,30 +45,47 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
       : title;
   const isDashboard = pathname === "/dashboard";
   const isNewProject = pathname === "/project/new";
+  const isLibrary = pathname === "/library";
   const isProfile = pathname === "/profile";
 
   return (
     <div className="min-h-screen flex flex-col pb-20 bg-background">
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/95 backdrop-blur-sm pt-[env(safe-area-inset-top)]">
         <div className="flex items-center min-h-11 gap-1 px-3 sm:px-4">
-          {backHref ? (
-            <>
+          <div className="w-10 shrink-0 flex items-center justify-start">
+            {backHref ? (
               <Link
                 href={backHref}
-                className="flex items-center shrink-0 min-h-11 min-w-10 pl-1 pr-2 -ml-1 rounded-lg hover:bg-muted/80 active:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                className="flex items-center min-h-11 min-w-10 pl-1 pr-2 -ml-1 rounded-lg hover:bg-muted/80 active:bg-muted transition-colors text-muted-foreground hover:text-foreground"
                 aria-label="Go back"
               >
                 ←
               </Link>
-              <span className="text-sm font-medium text-foreground truncate min-w-0">
+            ) : (
+              <span className="w-10" aria-hidden />
+            )}
+          </div>
+          <div className="flex-1 min-w-0 flex items-center justify-center">
+            {!isLibrary && (backHref ? (
+              <span className="text-sm font-medium text-foreground truncate block w-full text-center">
                 {headerTitle}
               </span>
-            </>
-          ) : (
-            <h1 className="flex-1 text-center text-base font-semibold text-foreground truncate px-2">
-              {headerTitle}
-            </h1>
-          )}
+            ) : (
+              <h1 className="text-base font-semibold text-foreground truncate w-full text-center px-2">
+                {headerTitle}
+              </h1>
+            ))}
+          </div>
+          <div className="w-14 shrink-0 flex items-center justify-end">
+            {!isLibrary && (
+              <Link
+                href="/library"
+                className="min-h-11 px-2 rounded-lg flex items-center text-sm font-medium transition-colors text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              >
+                Library
+              </Link>
+            )}
+          </div>
         </div>
       </header>
       <main className="flex-1">{children}</main>

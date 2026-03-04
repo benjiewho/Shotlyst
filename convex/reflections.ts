@@ -2,6 +2,9 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
+// NOTE: getByProject is currently unused by the frontend. It is expected to be
+// needed when "view existing reflection" or "edit reflection" features are added.
+// Do not delete without checking product roadmap.
 export const getByProject = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {

@@ -39,6 +39,15 @@ export const listByProject = query({
 export const getSceneUrl = query({
   args: { storageId: v.id("_storage") },
   handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const shot = await ctx.db
+      .query("shots")
+      .withIndex("by_scene_storage_id", (q) => q.eq("sceneStorageId", args.storageId))
+      .first();
+    if (!shot) return null;
+    const project = await ctx.db.get(shot.projectId);
+    if (!project || project.userId !== userId) return null;
     return await ctx.storage.getUrl(args.storageId);
   },
 });
@@ -131,6 +140,14 @@ export const remove = mutation({
     if (!shot) throw new Error("Shot not found");
     const project = await ctx.db.get(shot.projectId);
     if (!project || project.userId !== userId) throw new Error("Unauthorized");
+    const mediaRows = await ctx.db
+      .query("media")
+      .withIndex("by_shot_id", (q) => q.eq("shotId", args.shotId))
+      .collect();
+    for (const row of mediaRows) {
+      await ctx.storage.delete(row.storageId);
+      await ctx.db.delete(row._id);
+    }
     await ctx.db.delete(args.shotId);
     return args.shotId;
   },

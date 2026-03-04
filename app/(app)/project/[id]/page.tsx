@@ -53,6 +53,7 @@ function SceneThumbnail({ storageId }: { storageId: Id<"_storage"> }) {
 function SortableShotRow({
   shot,
   index,
+  projectId,
   updateShot,
   removeShot,
   generateUploadUrl,
@@ -60,6 +61,7 @@ function SortableShotRow({
 }: {
   shot: { _id: Id<"shots">; title: string; description: string; shotCategory?: string | null; purpose?: string | null; status?: string; sceneStorageId?: Id<"_storage"> | null };
   index: number;
+  projectId: Id<"projects">;
   updateShot: (args: { shotId: Id<"shots">; title?: string; description?: string; shotCategory?: ShotCategoryValue }) => Promise<unknown>;
   removeShot: (args: { shotId: Id<"shots"> }) => Promise<unknown>;
   generateUploadUrl: () => Promise<string>;
@@ -205,6 +207,11 @@ function SortableShotRow({
               onClick={() => replaceInputRef.current?.click()}
             >
               {isReplacing ? "Replacing…" : "Replace"}
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/project/${projectId}/capture?shot=${shot._id}`}>
+                Retake
+              </Link>
             </Button>
           </div>
         )}
@@ -463,6 +470,7 @@ export default function ProjectPlanPage() {
                         key={shot._id}
                         shot={shot}
                         index={i}
+                        projectId={projectId!}
                         updateShot={updateShot}
                         removeShot={removeShot}
                         generateUploadUrl={generateUploadUrl}

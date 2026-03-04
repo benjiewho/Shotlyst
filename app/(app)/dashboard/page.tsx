@@ -2,14 +2,24 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-
-const hasConvex =
-  typeof process.env.NEXT_PUBLIC_CONVEX_URL === "string" &&
-  process.env.NEXT_PUBLIC_CONVEX_URL.length > 0;
+import { hasConvex } from "@/lib/convex/has-convex";
+import { Trash2 } from "lucide-react";
 
 const CONTENT_TYPE_LABEL: Record<string, string> = {
   tiktok: "TikTok",
@@ -30,8 +40,10 @@ function formatRelativeTime(ms: number): string {
 
 function DashboardContent() {
   const [mounted, setMounted] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Id<"projects"> | null>(null);
   const listWithProgress = useQuery(api.projects.listWithProgress);
   const user = useQuery(api.users.getMe);
+  const deleteProject = useMutation(api.projects.deleteProject);
 
   useEffect(() => {
     setMounted(true);
@@ -74,25 +86,25 @@ function DashboardContent() {
           <ul className="flex flex-col gap-3">
             {listWithProgress.map(({ project, capturedCount, totalShots }) => (
               <li key={project._id}>
-                <Link href={`/project/${project._id}`}>
-                  <Card
-                    className={cn(
-                      "border-border bg-card transition-opacity hover:opacity-95",
-                      "min-h-[44px]"
-                    )}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-foreground truncate">
-                            {project.name}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {CONTENT_TYPE_LABEL[project.contentType] ??
-                              project.contentType}
-                          </p>
-                        </div>
-                        <div className="shrink-0 text-right">
+                <Card
+                  className={cn(
+                    "border-border bg-card transition-opacity hover:opacity-95",
+                    "min-h-[44px]"
+                  )}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <Link href={`/project/${project._id}`} className="min-w-0 flex-1">
+                        <p className="font-medium text-foreground truncate">
+                          {project.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {CONTENT_TYPE_LABEL[project.contentType] ??
+                            project.contentType}
+                        </p>
+                      </Link>
+                      <div className="shrink-0 flex items-center gap-1">
+                        <div className="text-right">
                           <p className="text-sm font-medium text-foreground">
                             {totalShots === 0
                               ? "No shots"
@@ -104,9 +116,45 @@ function DashboardContent() {
                             {formatRelativeTime(project.updatedAt)}
                           </p>
                         </div>
+                        <AlertDialog open={projectToDelete === project._id} onOpenChange={(open) => !open && setProjectToDelete(null)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="shrink-0 text-muted-foreground hover:text-destructive"
+                            aria-label="Delete project"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setProjectToDelete(project._id);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete this project?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete this project? This will permanently delete all scenes, videos, and reflections.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground hover:opacity-90"
+                                onClick={async () => {
+                                  await deleteProject({ projectId: project._id });
+                                  setProjectToDelete(null);
+                                }}
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
-                      {totalShots > 0 && (
-                        <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                    </div>
+                    {totalShots > 0 && (
+                      <Link href={`/project/${project._id}`} className="block mt-2">
+                        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
                           <div
                             className="h-full rounded-full bg-primary transition-all"
                             style={{
@@ -114,10 +162,10 @@ function DashboardContent() {
                             }}
                           />
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </Link>
+                      </Link>
+                    )}
+                  </CardContent>
+                </Card>
               </li>
             ))}
           </ul>

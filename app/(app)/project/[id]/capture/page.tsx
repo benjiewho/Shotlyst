@@ -59,6 +59,7 @@ export default function CapturePage() {
 
   const generateUploadUrl = useMutation(api.shots.generateUploadUrl);
   const linkScene = useMutation(api.shots.linkScene);
+  const saveToLibrary = useMutation(api.media.saveToLibrary);
   const updateStatus = useMutation(api.shots.updateStatus);
   const updateShot = useMutation(api.shots.updateShot);
   const analyzeStrongMoments = useAction(api.ai.analyzeVideoForStrongMoments);
@@ -78,6 +79,7 @@ export default function CapturePage() {
   const [streamAspect, setStreamAspect] = useState<{ w: number; h: number } | null>(null);
   const [previewAspect, setPreviewAspect] = useState<{ w: number; h: number } | null>(null);
   const [recordedBlobUrl, setRecordedBlobUrl] = useState<string | null>(null);
+  const [savedToLibraryFeedback, setSavedToLibraryFeedback] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const reviewVideoRef = useRef<HTMLVideoElement>(null);
@@ -273,6 +275,12 @@ export default function CapturePage() {
         xhr.setRequestHeader("Content-Type", contentType);
         xhr.send(recordedBlob);
       });
+      await saveToLibrary({
+        projectId: projectId!,
+        shotId: currentShot._id,
+        storageId,
+        duration: Math.round(recordedDuration),
+      });
       await linkScene({
         shotId: currentShot._id,
         storageId,
@@ -297,7 +305,61 @@ export default function CapturePage() {
       setIsUploading(false);
       setUploadProgress(null);
     }
-  }, [currentShot, recordedBlob, recordedDuration, generateUploadUrl, linkScene, analyzeStrongMoments, pendingShots, totalShots, capturedCount, isUploading, projectId, router, closeCamera]);
+  }, [currentShot, recordedBlob, recordedDuration, generateUploadUrl, saveToLibrary, linkScene, analyzeStrongMoments, pendingShots, totalShots, capturedCount, isUploading, projectId, router, closeCamera]);
+
+  const saveToLibraryOnly = useCallback(async () => {
+    if (!currentShot || !recordedBlob || !projectId) return;
+    if (isUploading) return;
+    setIsUploading(true);
+    setUploadProgress(0);
+    setError(null);
+    try {
+      const uploadUrl = await generateUploadUrl();
+      const contentType =
+        recordedBlob.type.split(";")[0].trim() || "video/webm";
+      const storageId = await new Promise<Id<"_storage">>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            setUploadProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText) as { storageId: Id<"_storage"> };
+              resolve(data.storageId);
+            } catch {
+              reject(new Error("Invalid upload response"));
+            }
+          } else {
+            reject(new Error(xhr.responseText ? `${xhr.status}: ${xhr.responseText}` : `Upload failed (${xhr.status})`));
+          }
+        };
+        xhr.onerror = () => reject(new Error("Upload failed"));
+        xhr.open("POST", uploadUrl);
+        xhr.setRequestHeader("Content-Type", contentType);
+        xhr.send(recordedBlob);
+      });
+      await saveToLibrary({
+        projectId,
+        shotId: currentShot._id,
+        storageId,
+        duration: Math.round(recordedDuration),
+      });
+      setRecordedBlob(null);
+      setRecordedDuration(0);
+      setRecordedBlobUrl(null);
+      setPreviewAspect(null);
+      setSavedToLibraryFeedback(true);
+      setTimeout(() => setSavedToLibraryFeedback(false), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(null);
+    }
+  }, [currentShot, recordedBlob, recordedDuration, projectId, generateUploadUrl, saveToLibrary, isUploading]);
 
   const retake = useCallback(() => {
     setRecordedBlob(null);
@@ -538,9 +600,20 @@ export default function CapturePage() {
                   onClick={confirmCapture}
                   disabled={isUploading}
                 >
-                  {isUploading ? "Uploading…" : "Confirm"}
+                  {isUploading ? "Uploading…" : "Use Scene"}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 min-h-11"
+                  onClick={saveToLibraryOnly}
+                  disabled={isUploading}
+                >
+                  {isUploading ? "Uploading…" : "Save to Library"}
                 </Button>
               </div>
+              {savedToLibraryFeedback && (
+                <p className="text-sm text-primary font-medium text-center">Saved to library</p>
+              )}
             </div>
           ) : selectedShot?.status === "captured" &&
             selectedShot?.sceneStorageId &&

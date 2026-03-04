@@ -3,6 +3,7 @@
 import { useConvexAuth } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { hasConvex } from "@/lib/convex/has-convex";
 
 function AuthGuardInner({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -31,9 +32,6 @@ function AuthGuardInner({ children }: { children: React.ReactNode }) {
 }
 
 export function ConvexAuthGuard({ children }: { children: React.ReactNode }) {
-  const hasConvex =
-    typeof process.env.NEXT_PUBLIC_CONVEX_URL === "string" &&
-    process.env.NEXT_PUBLIC_CONVEX_URL.length > 0;
   if (!hasConvex) {
     return <>{children}</>;
   }

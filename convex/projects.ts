@@ -8,19 +8,6 @@ const contentType = v.union(
   v.literal("travel_diary")
 );
 
-export const list = query({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) return [];
-    return await ctx.db
-      .query("projects")
-      .withIndex("by_user_updated", (q) => q.eq("userId", userId))
-      .order("desc")
-      .collect();
-  },
-});
-
 export const listWithProgress = query({
   args: {},
   handler: async (ctx) => {
@@ -63,6 +50,9 @@ export const create = mutation({
     contentType,
     videoGoal: v.string(),
     audience: v.array(v.string()),
+    // DEPRECATED: templateId is no longer used by any frontend flow (AI-only).
+    // Kept optional for backward compatibility. Safe to remove after confirming
+    // no production data relies on it.
     templateId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -153,6 +143,40 @@ export const updateStatus = mutation({
       status: args.status,
       updatedAt: Date.now(),
     });
+    return args.projectId;
+  },
+});
+
+export const deleteProject = mutation({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== userId) throw new Error("Project not found");
+    const shots = await ctx.db
+      .query("shots")
+      .withIndex("by_project_id", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const mediaRows = await ctx.db
+      .query("media")
+      .withIndex("by_project_id", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    for (const row of mediaRows) {
+      await ctx.storage.delete(row.storageId);
+      await ctx.db.delete(row._id);
+    }
+    for (const shot of shots) {
+      await ctx.db.delete(shot._id);
+    }
+    const reflections = await ctx.db
+      .query("reflections")
+      .withIndex("by_project_id", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    for (const r of reflections) {
+      await ctx.db.delete(r._id);
+    }
+    await ctx.db.delete(args.projectId);
     return args.projectId;
   },
 });

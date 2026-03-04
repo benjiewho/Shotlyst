@@ -11,6 +11,7 @@
 import type * as ai from "../ai.js";
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
+import type * as media from "../media.js";
 import type * as projects from "../projects.js";
 import type * as reflections from "../reflections.js";
 import type * as shots from "../shots.js";
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   ai: typeof ai;
   auth: typeof auth;
   http: typeof http;
+  media: typeof media;
   projects: typeof projects;
   reflections: typeof reflections;
   shots: typeof shots;

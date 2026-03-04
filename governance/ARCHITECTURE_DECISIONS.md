@@ -2,38 +2,50 @@
 
 Record of key design choices for Shotlyst.
 
-## 1. Shotlist template system
+## 1. AI-only new-project flow
 
-**Decision:** Templates are data-driven. Template definitions live in `lib/shotlists/` (TypeScript data + types); Convex stores only projects and shots. No template rows in the database for built-in templates.
+**Decision:** New project creation uses a single form (location, content type, goal, audience). On submission the project is created and `generatePlan(projectId)` is called. AI (Gemini) produces goal, hook, style, and context-aware scenes.
 
-**Rationale:** Keeps the app simple: UI is generic over template data, and new built-in templates can be added by editing config. User-defined or marketplace templates can be added later (e.g. Convex table or external config) without changing the core flow.
+**Rationale:** Simplifies onboarding to one path. Removes template picker complexity; the AI path already generates high-quality, location-relevant shot lists.
 
-**Tradeoffs:** Template content is in code, so changing copy requires a deploy. Acceptable for v1.
-
----
-
-## 2. Template path and AI path coexist
-
-**Decision:** New project offers two paths: “Start from template” and “Let AI suggest shots.” Both use the same form (location, content type, goal, audience). Template path: create project with optional `templateId`, then seed shots from template via `createFromPlan`. AI path: create project, then call `generatePlan(projectId)` as today.
-
-**Rationale:** Preserves existing AI flow and adds templates without breaking current users. Project has optional `templateId` for analytics and future features.
-
-**Tradeoffs:** Two code paths for “how shots are created”; shared plan/capture/report logic keeps duplication low.
+**Previous approach (removed):** Two paths — "Start from template" and "Let AI suggest shots" — with a client-side template definition layer (`lib/shotlists/`). Removed after user testing showed one path is clearer.
 
 ---
 
-## 3. Shots schema shared; optional `purpose`
+## 2. Shots schema — shared with optional `purpose`
 
-**Decision:** Shots table is shared between AI-generated and template-seeded plans. Optional `purpose` field stores the template “purpose hint” (e.g. “Pattern interrupt — grab attention in the first 1–2 seconds”) for display on Plan (and optionally Capture).
+**Decision:** Shots table is shared between AI-generated and any future template-seeded plans. Optional `purpose` field stores a hint (e.g. "Pattern interrupt — grab attention in the first 1-2 seconds").
 
-**Rationale:** One shot shape for all sources; purpose is optional so AI-created shots are unchanged. Plan page shows purpose when present.
+**Rationale:** One shot shape for all sources; purpose is optional so AI-created shots carry it when present.
 
 ---
 
-## 4. Reuse `createFromPlan` for template shots
+## 3. Strong moments (AI video analysis)
 
-**Decision:** No separate “createFromTemplate” mutation. Client reads template from `lib/shotlists`, builds the shot array via `templateToShotsForCreate()`, and calls existing `shots.createFromPlan(projectId, shots)`.
+**Decision:** After a creator uploads a video for a scene in Capture mode, the app can call `analyzeVideoForStrongMoments` which sends the video to Gemini 1.5 Flash. The response contains timestamped "strong moments" with reasons, saved to the shot record.
 
-**Rationale:** Avoids duplicating insert logic and keeps a single source of truth for “how shots are created from a list.” Template layer is client-side only; Convex stays unaware of template structure.
+**Rationale:** Second AI use case, directly tied to helping creators identify their best footage for editing.
 
-**Tradeoffs:** Client must have template definitions; no server-side validation of template shape. Acceptable while templates are built-in and trusted.
+---
+
+## 4. `hasConvex` shared helper
+
+**Decision:** The check for whether the Convex deployment URL is configured lives in `lib/convex/has-convex.ts`. All pages/components import from there instead of inlining the check.
+
+**Rationale:** Eliminates duplication (was in 3 files) and provides a single point of change if the detection logic evolves.
+
+---
+
+## 5. Drag-and-drop shot reordering (Plan page)
+
+**Decision:** Uses `@dnd-kit` (core + sortable) for drag-and-drop reordering of shots on the Plan page. The `reorderShots` Convex mutation updates `order` fields.
+
+**Rationale:** Proven library with good touch support, aligns with mobile-first UX. Badge numbers update dynamically with reordering.
+
+---
+
+## 6. `templateId` on projects (deprecated)
+
+**Decision:** The `templateId` optional field on the `projects` table is kept in the schema and `create` mutation but marked as deprecated. No frontend code passes it.
+
+**Rationale:** Safe to leave in place; removal is deferred to a future cleanup after confirming no production data relies on it.

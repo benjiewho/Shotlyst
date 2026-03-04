@@ -102,7 +102,9 @@ export default defineSchema({
         })
       )
     ),
-  }).index("by_project_id", ["projectId"]),
+  })
+    .index("by_project_id", ["projectId"])
+    .index("by_scene_storage_id", ["sceneStorageId"]),
 
   reflections: defineTable({
     projectId: v.id("projects"),
@@ -119,4 +121,17 @@ export default defineSchema({
     notes: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_project_id", ["projectId"]),
+
+  media: defineTable({
+    userId: v.id("users"),
+    projectId: v.id("projects"),
+    shotId: v.id("shots"),
+    storageId: v.id("_storage"),
+    duration: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_user_id", ["userId"])
+    .index("by_shot_id", ["shotId"])
+    .index("by_project_id", ["projectId"])
+    .index("by_storage_id", ["storageId"]),
 });
