@@ -40,7 +40,7 @@ export function LandingNav() {
           </span>
         </Link>
 
-        {/* Desktop: center links + Sign in + Get started */}
+        {/* Desktop: center links + Get started */}
         <div className="hidden items-center gap-6 md:flex">
           {NAV_LINKS.map(({ href, label }) => (
             <Link
@@ -51,12 +51,6 @@ export function LandingNav() {
               {label}
             </Link>
           ))}
-          <Link
-            href="/login"
-            className="min-h-[44px] min-w-[44px] items-center rounded-xl px-3 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 inline-flex"
-          >
-            Sign in
-          </Link>
           <Button asChild size="default">
             <Link href="/login">Get started</Link>
           </Button>
@@ -102,15 +96,6 @@ export function LandingNav() {
               </Link>
             </li>
           ))}
-          <li>
-            <Link
-              href="/login"
-              onClick={() => setMenuOpen(false)}
-              className="flex min-h-[44px] min-w-full items-center rounded-xl px-4 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              Sign in
-            </Link>
-          </li>
         </ul>
       </div>
     </header>

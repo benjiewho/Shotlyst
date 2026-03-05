@@ -99,14 +99,17 @@ export default function HomePage() {
                 your phone. No more filming aimlessly or fixing it in the edit.
               </p>
             </div>
-            <div className="flex w-full max-w-sm flex-col gap-3">
-              <ContinueWithGoogleButton className="min-h-12 w-full" size="lg" />
-              <p className="text-center text-sm text-muted-foreground">Or</p>
-              <Button variant="ghost" className="min-h-12 w-full" asChild>
-                <Link href="/signup" className="text-primary font-medium">
-                  Sign up with Email
-                </Link>
-              </Button>
+            <div className="flex w-full max-w-sm flex-col gap-4">
+              <p className="text-sm text-muted-foreground">Start free — get your shot list in minutes.</p>
+              <div className="rounded-xl border border-border bg-muted/30 p-4 flex flex-col gap-3">
+                <ContinueWithGoogleButton className="min-h-12 w-full text-base font-medium shadow-md" size="lg" />
+                <p className="text-center text-sm text-muted-foreground">Or</p>
+                <Button variant="ghost" className="min-h-12 w-full" asChild>
+                  <Link href="/signup" className="text-primary font-medium">
+                    Sign up with Email
+                  </Link>
+                </Button>
+              </div>
             </div>
             {/* Product preview — phone mock (below on mobile) */}
             <div className="mt-8 w-full max-w-[280px] sm:mt-12">
@@ -303,11 +306,10 @@ export default function HomePage() {
               <h2 className="text-xl font-semibold text-foreground sm:text-2xl">
                 Ready to plan your next shoot?
               </h2>
-              <div className="flex w-full max-w-sm flex-col gap-3">
-                <ContinueWithGoogleButton className="min-h-12 w-full" size="lg" />
-                <p className="text-center text-sm text-muted-foreground">
-                  Free to start
-                </p>
+              <p className="text-sm text-muted-foreground">Start free — get your shot list in minutes.</p>
+              <div className="rounded-xl border border-border bg-muted/30 p-4 flex w-full max-w-sm flex-col gap-3">
+                <ContinueWithGoogleButton className="min-h-12 w-full text-base font-medium shadow-md" size="lg" />
+                <p className="text-center text-sm text-muted-foreground">Or</p>
                 <Button variant="ghost" className="min-h-12 w-full" asChild>
                   <Link href="/signup" className="text-primary font-medium">
                     Sign up with Email

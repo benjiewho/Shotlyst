@@ -106,7 +106,7 @@ function DashboardContent() {
                           {capturedCount} of {totalShots} scenes assigned
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Total videos: {totalMediaCount}
+                          Total Videos Captured: {totalMediaCount}
                         </p>
                       </Link>
                       <div className="shrink-0 flex items-center gap-1">
