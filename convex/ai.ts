@@ -5,6 +5,8 @@ import { api } from "./_generated/api";
 import { v } from "convex/values";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+
 type ShotCategory = "hook_shot" | "establishing_shot" | "action_shots" | "detail_broll";
 
 const STUB_PLAN = {
@@ -20,12 +22,14 @@ const STUB_PLAN = {
       shotCategory: "establishing_shot" as ShotCategory,
       title: "Wide of the space",
       description: "Wide shot of the location to set the scene.",
+      purpose: "Set context so viewers know where we are.",
     },
     {
       type: "must" as const,
       shotCategory: "detail_broll" as ShotCategory,
       title: "Key detail or product close-up",
       description: "Close-up of a key element (dish, view, or activity).",
+      purpose: "Add texture and a moment to lean in.",
     },
     {
       type: "nice" as const,
@@ -41,6 +45,7 @@ type ShotInput = {
   shotCategory?: ShotCategory;
   title: string;
   description: string;
+  purpose?: string;
 };
 
 function titleToCategory(title: string): ShotCategory {
@@ -65,7 +70,7 @@ function parsePlanFromGemini(text: string): {
     goalSummary?: string;
     suggestedHook?: string;
     recommendedStyle?: string;
-    shots?: { type?: string; title?: string; description?: string }[];
+    shots?: { type?: string; title?: string; description?: string; purpose?: string }[];
   };
   const shots: ShotInput[] = (parsed.shots ?? []).map((s, i) => {
     const title = typeof s.title === "string" ? s.title : `Shot ${i + 1}`;
@@ -76,6 +81,7 @@ function parsePlanFromGemini(text: string): {
       )
         ? ((s as { shotCategory: string }).shotCategory as ShotCategory)
         : titleToCategory(title);
+    const purpose = typeof (s as { purpose?: string }).purpose === "string" ? (s as { purpose: string }).purpose : undefined;
     return {
       type: (s.type === "optional" || s.type === "nice" ? s.type : "must") as
         | "must"
@@ -85,6 +91,7 @@ function parsePlanFromGemini(text: string): {
       title,
       description:
         typeof s.description === "string" ? s.description : "No description.",
+      purpose,
     };
   });
   return {
@@ -113,25 +120,55 @@ export const generatePlan = action({
       recommendedStyle: string;
       shots: ShotInput[];
     };
+    let planSource: "stub" | "gemini" = "stub";
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       plan = STUB_PLAN;
     } else {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const prompt = `You are a short-form video (TikTok, YouTube Shorts, travel reels) content strategist. Given the following project brief, output a JSON object only (no markdown, no explanation) with this exact structure:
+      try {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+
+        const contentTypeHint =
+          project.contentType === "travel_diary"
+            ? "Subject: destination vibe, personal moments, atmosphere."
+            : project.contentType === "tiktok"
+              ? "Subject: hook first, trend-aware, punchy."
+              : "Subject: hook in first 3s, clear beats, CTA.";
+        const audienceLine = `Audience: ${project.audience.join(", ")} — aim for clear value and watchability.`;
+        const platformLine =
+          project.contentType === "tiktok"
+            ? "Platform: TikTok — hook in first 1–2 seconds, vertical, quick cuts."
+            : project.contentType === "youtube_short"
+              ? "Platform: YouTube Shorts — hook in first 3 seconds, clear structure, CTA."
+              : "Platform: Travel — location reveal, cultural detail, personal moment, atmosphere.";
+
+        const prompt = `You are a pragmatic director for everyday creators. Output only valid JSON; no markdown or commentary.
+
+CONTENT: ${contentTypeHint} ${audienceLine}
+${platformLine}
+
+SCENE STRATEGY (use these categories):
+- hook_shot: immediate value, curiosity, pattern interrupt.
+- establishing_shot: context, environment, wide.
+- action_shots: movement, result, energy, climax.
+- detail_broll: close-ups, texture, cutaways, coverage.
+
+SPECIFICITY: Avoid generic descriptions. Be concrete and shootable. For each shot, "title" must be a specific, location- and purpose-relevant suggestion (e.g. "Coffee being poured", "Wide of the cafe interior", "Pastry close-up") — never the category name. In "description" include one concrete cue when helpful: angle (overhead, eye-level), movement (slow pan, static), or moment (pour, first bite).
+
+VARIETY: Vary shots — if one is wide and static, next can be closer or with movement. Mix pacing.
+ORDER: Hook → establishing → main action/beats → detail/b-roll → closing/CTA if needed. Include 5–8 shots (hard cap 10). Prefer "must" for essential shots, "nice" or "optional" for extras.
+
+Output a JSON object with this exact structure:
 {
   "goalSummary": "1-2 sentence summary of the video goal",
   "suggestedHook": "One concrete hook idea for the first 1-2 seconds",
   "recommendedStyle": "Brief style notes (pacing, tone, length)",
   "shots": [
-    { "type": "must|nice|optional", "shotCategory": "hook_shot|establishing_shot|action_shots|detail_broll", "title": "Specific location-relevant suggestion", "description": "What to film" }
+    { "type": "must|nice|optional", "shotCategory": "hook_shot|establishing_shot|action_shots|detail_broll", "title": "Specific location-relevant suggestion", "description": "What to film; optional concrete cue", "purpose": "Optional one-line why this shot" }
   ]
 }
-Include 5-8 shots. Prefer "must" for essential shots and "nice" or "optional" for extras.
-
-CRITICAL for each shot: "title" must be a specific, location- and purpose-relevant suggestion, NOT the shot type name. Use the project location and video goal. Examples: for a cafe — hook_shot title could be "Coffee being poured" or "Restaurant sign"; establishing_shot could be "Wide of the cafe interior"; detail_broll could be "Pastry close-up". For a beach — hook_shot could be "Wave crashing" or "Feet in sand". Never use generic labels like "Hook shot" or "Establishing shot" as the title. "description" should say what to film for that moment.
 
 Project brief:
 - Location: ${project.location}
@@ -139,11 +176,19 @@ Project brief:
 - Video goal: ${project.videoGoal}
 - Audience: ${project.audience.join(", ")}`;
 
-      const result = await model.generateContent(prompt);
-      const response = result.response;
-      const text = response.text();
-      if (!text) throw new Error("Empty response from Gemini");
-      plan = parsePlanFromGemini(text);
+        const result = await model.generateContent(prompt);
+        const response = result.response;
+        const text = response.text();
+        if (!text) throw new Error("Empty response from Gemini");
+        plan = parsePlanFromGemini(text);
+        planSource = "gemini";
+      } catch (e) {
+        plan = STUB_PLAN;
+        console.warn(
+          "Gemini plan generation failed, using stub:",
+          e instanceof Error ? e.message : String(e)
+        );
+      }
     }
 
     await ctx.runMutation(api.projects.updatePlan, {
@@ -151,6 +196,7 @@ Project brief:
       goalSummary: plan.goalSummary,
       suggestedHook: plan.suggestedHook,
       recommendedStyle: plan.recommendedStyle,
+      planSource,
     });
 
     await ctx.runMutation(api.shots.createFromPlan, {
@@ -161,6 +207,7 @@ Project brief:
         title: s.title,
         description: s.description,
         order: i,
+        ...(s.purpose !== undefined && s.purpose !== "" ? { purpose: s.purpose } : {}),
       })),
     });
 
@@ -199,7 +246,7 @@ export const analyzeVideoForStrongMoments = action({
     const base64 = Buffer.from(bytes).toString("base64");
     const mimeType = (resp.headers.get("content-type") || "video/mp4").split(";")[0].trim();
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
     const result = await model.generateContent([
       {
         inlineData: {
@@ -228,6 +275,85 @@ export const analyzeVideoForStrongMoments = action({
       strongMoments: list,
     });
     return { success: true };
+  },
+});
+
+function buildPlanContext(project: { goalSummary: string; suggestedHook: string; recommendedStyle: string; location: string; contentType: string; videoGoal: string; audience: string[] }, shots: { order: number; title: string; description: string; shotCategory?: string }[]): string {
+  const shotLines = shots
+    .sort((a, b) => a.order - b.order)
+    .map((s, i) => `${i + 1}. ${s.title} (${s.shotCategory ?? "—"}) — ${s.description}`)
+    .join("\n");
+  return `Goal: ${project.goalSummary}
+Suggested hook: ${project.suggestedHook}
+Recommended style: ${project.recommendedStyle}
+Location: ${project.location}
+Content type: ${project.contentType}
+Video goal: ${project.videoGoal}
+Audience: ${project.audience.join(", ")}
+
+Shot list:
+${shotLines}`;
+}
+
+export const regenerateHook = action({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const project = await ctx.runQuery(api.projects.get, { id: args.projectId });
+    if (!project) throw new Error("Project not found");
+    const shots = await ctx.runQuery(api.shots.listByProject, { projectId: args.projectId });
+    const context = buildPlanContext(project, shots);
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return { success: false };
+    }
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+      const prompt = `Given this plan:\n\n${context}\n\nGenerate only a new suggested hook (1-2 sentences) for the first 1-2 seconds of the video. Reply with only the hook text, no labels or quotes.`;
+      const result = await model.generateContent(prompt);
+      const text = result.response.text()?.trim() ?? "";
+      if (!text) return { success: false };
+      const clean = text.replace(/^["']|["']$/g, "");
+      await ctx.runMutation(api.projects.updatePlanFields, {
+        projectId: args.projectId,
+        suggestedHook: clean,
+      });
+      return { success: true };
+    } catch (e) {
+      console.warn("regenerateHook failed:", e instanceof Error ? e.message : String(e));
+      return { success: false };
+    }
+  },
+});
+
+export const regenerateStyle = action({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const project = await ctx.runQuery(api.projects.get, { id: args.projectId });
+    if (!project) throw new Error("Project not found");
+    const shots = await ctx.runQuery(api.shots.listByProject, { projectId: args.projectId });
+    const context = buildPlanContext(project, shots);
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return { success: false };
+    }
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+      const prompt = `Given this plan:\n\n${context}\n\nGenerate only new recommended style notes (pacing, tone, length, duration). Reply with only the style text, no labels or quotes.`;
+      const result = await model.generateContent(prompt);
+      const text = result.response.text()?.trim() ?? "";
+      if (!text) return { success: false };
+      const clean = text.replace(/^["']|["']$/g, "");
+      await ctx.runMutation(api.projects.updatePlanFields, {
+        projectId: args.projectId,
+        recommendedStyle: clean,
+      });
+      return { success: true };
+    } catch (e) {
+      console.warn("regenerateStyle failed:", e instanceof Error ? e.message : String(e));
+      return { success: false };
+    }
   },
 });
 

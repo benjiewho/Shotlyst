@@ -139,7 +139,7 @@ function DashboardContent() {
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancel</AlertDialogCancel>
                               <AlertDialogAction
-                                className="bg-destructive text-destructive-foreground hover:opacity-90"
+                                className="bg-red-600 text-white hover:bg-red-700 focus:ring-red-500"
                                 onClick={async () => {
                                   await deleteProject({ projectId: project._id });
                                   setProjectToDelete(null);

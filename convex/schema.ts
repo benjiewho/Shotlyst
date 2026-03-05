@@ -76,6 +76,7 @@ export default defineSchema({
     goalSummary: v.string(),
     suggestedHook: v.string(),
     recommendedStyle: v.string(),
+    planSource: v.optional(v.union(v.literal("stub"), v.literal("gemini"))),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

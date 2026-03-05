@@ -84,6 +84,7 @@ export const updatePlan = mutation({
     goalSummary: v.string(),
     suggestedHook: v.string(),
     recommendedStyle: v.string(),
+    planSource: v.optional(v.union(v.literal("stub"), v.literal("gemini"))),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -91,14 +92,16 @@ export const updatePlan = mutation({
     const project = await ctx.db.get(args.projectId);
     if (!project || project.userId !== userId) throw new Error("Project not found");
     const now = Date.now();
-    await ctx.db.patch(args.projectId, {
+    const patch: Record<string, unknown> = {
       goalSummary: args.goalSummary,
       suggestedHook: args.suggestedHook,
       recommendedStyle: args.recommendedStyle,
       planGenerated: true,
       status: "capturing",
       updatedAt: now,
-    });
+    };
+    if (args.planSource !== undefined) patch.planSource = args.planSource;
+    await ctx.db.patch(args.projectId, patch);
     return args.projectId;
   },
 });
@@ -143,6 +146,35 @@ export const updateStatus = mutation({
       status: args.status,
       updatedAt: Date.now(),
     });
+    return args.projectId;
+  },
+});
+
+export const clearShotsForProject = mutation({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== userId) throw new Error("Project not found");
+    const shots = await ctx.db
+      .query("shots")
+      .withIndex("by_project_id", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    for (const shot of shots) {
+      if (shot.sceneStorageId) {
+        await ctx.storage.delete(shot.sceneStorageId);
+      }
+      const mediaRows = await ctx.db
+        .query("media")
+        .withIndex("by_shot_id", (q) => q.eq("shotId", shot._id))
+        .collect();
+      for (const row of mediaRows) {
+        await ctx.storage.delete(row.storageId);
+        await ctx.db.delete(row._id);
+      }
+      await ctx.db.delete(shot._id);
+    }
     return args.projectId;
   },
 });

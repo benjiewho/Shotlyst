@@ -8,6 +8,7 @@ import {
   CircleX,
 } from "lucide-react";
 import { LandingNav } from "@/components/landing-nav";
+import { ContinueWithGoogleButton } from "@/components/continue-with-google-button";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -99,9 +100,7 @@ export default function HomePage() {
               </p>
             </div>
             <div className="flex w-full max-w-sm flex-col gap-3">
-              <Button className="min-h-12 w-full" size="lg" asChild>
-                <Link href="/login">Continue with Google</Link>
-              </Button>
+              <ContinueWithGoogleButton className="min-h-12 w-full" size="lg" />
               <p className="text-center text-sm text-muted-foreground">Or</p>
               <Button variant="ghost" className="min-h-12 w-full" asChild>
                 <Link href="/signup" className="text-primary font-medium">
@@ -305,9 +304,7 @@ export default function HomePage() {
                 Ready to plan your next shoot?
               </h2>
               <div className="flex w-full max-w-sm flex-col gap-3">
-                <Button className="min-h-12 w-full" size="lg" asChild>
-                  <Link href="/login">Continue with Google</Link>
-                </Button>
+                <ContinueWithGoogleButton className="min-h-12 w-full" size="lg" />
                 <p className="text-center text-sm text-muted-foreground">
                   Free to start
                 </p>

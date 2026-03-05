@@ -3,11 +3,21 @@
 import { useState, useRef } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { Trash2, GripVertical } from "lucide-react";
 import {
@@ -33,7 +43,7 @@ const SHOT_CATEGORIES = [
 ] as const;
 type ShotCategoryValue = (typeof SHOT_CATEGORIES)[number]["value"];
 
-type EditField = "goal" | "hook" | "style" | null;
+type EditField = "goal" | null;
 
 function SceneThumbnail({ storageId }: { storageId: Id<"_storage"> }) {
   const url = useQuery(api.shots.getSceneUrl, { storageId });
@@ -45,7 +55,9 @@ function SceneThumbnail({ storageId }: { storageId: Id<"_storage"> }) {
       className="w-16 h-16 rounded-lg object-cover bg-muted"
       muted
       playsInline
-      preload="metadata"
+      autoPlay
+      loop
+      preload="auto"
     />
   );
 }
@@ -244,12 +256,16 @@ export default function ProjectPlanPage() {
     projectId ? { projectId } : "skip"
   );
   const updatePlanFields = useMutation(api.projects.updatePlanFields);
+  const clearShotsForProject = useMutation(api.projects.clearShotsForProject);
   const updateShot = useMutation(api.shots.updateShot);
   const removeShot = useMutation(api.shots.remove);
   const createOneShot = useMutation(api.shots.createOne);
   const reorderShots = useMutation(api.shots.reorderShots);
   const generateUploadUrl = useMutation(api.shots.generateUploadUrl);
   const linkScene = useMutation(api.shots.linkScene);
+  const generatePlan = useAction(api.ai.generatePlan);
+  const regenerateHook = useAction(api.ai.regenerateHook);
+  const regenerateStyle = useAction(api.ai.regenerateStyle);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -268,8 +284,11 @@ export default function ProjectPlanPage() {
 
   const [editing, setEditing] = useState<EditField>(null);
   const [draftGoal, setDraftGoal] = useState("");
-  const [draftHook, setDraftHook] = useState("");
-  const [draftStyle, setDraftStyle] = useState("");
+  const [regenerateDialogMode, setRegenerateDialogMode] = useState<"regenerate" | "save-and-regenerate" | null>(null);
+  const [isRegeneratingPlan, setIsRegeneratingPlan] = useState(false);
+  const [regeneratingHook, setRegeneratingHook] = useState(false);
+  const [regeneratingStyle, setRegeneratingStyle] = useState(false);
+  const regenerateInFlightRef = useRef(false);
 
   if (projectId && project === undefined) {
     return (
@@ -305,27 +324,86 @@ export default function ProjectPlanPage() {
     if (!project) return;
     setEditing(field);
     if (field === "goal") setDraftGoal(project.goalSummary ?? "");
-    if (field === "hook") setDraftHook(project.suggestedHook ?? "");
-    if (field === "style") setDraftStyle(project.recommendedStyle ?? "");
   };
 
   const saveEdit = async () => {
-    if (!projectId || !editing) return;
+    if (!projectId || editing !== "goal") return;
     try {
-      if (editing === "goal") await updatePlanFields({ projectId, goalSummary: draftGoal });
-      if (editing === "hook") await updatePlanFields({ projectId, suggestedHook: draftHook });
-      if (editing === "style") await updatePlanFields({ projectId, recommendedStyle: draftStyle });
+      await updatePlanFields({ projectId, goalSummary: draftGoal });
       setEditing(null);
     } catch {
       // keep editing open on error
     }
   };
 
+  const runFullPlanRegenerate = async () => {
+    if (!projectId) return;
+    if (regenerateDialogMode === "save-and-regenerate" && editing === "goal") {
+      await updatePlanFields({ projectId, goalSummary: draftGoal });
+      setEditing(null);
+    }
+    setRegenerateDialogMode(null);
+    setIsRegeneratingPlan(true);
+    try {
+      await clearShotsForProject({ projectId });
+      await generatePlan({ projectId });
+    } catch (e) {
+      console.error("Regenerate plan failed:", e);
+    } finally {
+      setIsRegeneratingPlan(false);
+    }
+  };
+
+  const planSourceLabel = project.planSource === "gemini" ? "Gemini" : project.planSource === "stub" ? "Stub template" : "Unknown";
+  const planUpdatedAt = project.updatedAt ? new Date(project.updatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null;
+
   return (
     <div className="p-4 max-w-2xl mx-auto pb-8">
       <div className="mb-6 rounded-xl bg-primary/10 border border-primary/20 px-4 py-3">
         <p className="text-sm font-medium text-foreground">Your plan is ready</p>
       </div>
+
+      <div className="mb-4 rounded-lg bg-muted/60 border border-border px-3 py-2 text-xs text-muted-foreground flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div>
+          <p><span className="font-medium text-foreground">Scene generation:</span> {planSourceLabel}</p>
+          {planUpdatedAt && <p>Plan updated: {planUpdatedAt}</p>}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isRegeneratingPlan}
+            onClick={() => setRegenerateDialogMode("regenerate")}
+          >
+            {isRegeneratingPlan ? "Regenerating…" : "Regenerate"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isRegeneratingPlan}
+            onClick={() => setRegenerateDialogMode("save-and-regenerate")}
+          >
+            {isRegeneratingPlan ? "Regenerating…" : "Save & Regenerate"}
+          </Button>
+        </div>
+      </div>
+
+      <AlertDialog open={regenerateDialogMode !== null} onOpenChange={(open) => !open && setRegenerateDialogMode(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace entire plan?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will clear the current plan and all captured videos for this project and generate a new goal, hook, style, and shot list. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={runFullPlanRegenerate}>
+              Yes, replace plan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="space-y-6">
         <Card>
@@ -362,62 +440,70 @@ export default function ProjectPlanPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">Suggested hook</CardTitle>
-            {editing !== "hook" && (
-              <Button variant="ghost" size="sm" onClick={() => startEdit("hook")}>
-                Edit
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={regeneratingHook}
+              onClick={async () => {
+                if (!projectId) return;
+                if (regenerateInFlightRef.current) return;
+                regenerateInFlightRef.current = true;
+                setRegeneratingHook(true);
+                try {
+                  const result = await regenerateHook({ projectId });
+                  if (!result?.success) {
+                    console.warn("Hook regeneration did not update.");
+                  }
+                } catch (e) {
+                  console.error("Regenerate hook failed:", e);
+                } finally {
+                  regenerateInFlightRef.current = false;
+                  setRegeneratingHook(false);
+                }
+              }}
+            >
+              {regeneratingHook ? "Regenerating…" : "Regenerate"}
+            </Button>
           </CardHeader>
           <CardContent>
-            {editing === "hook" ? (
-              <div className="space-y-2">
-                <textarea
-                  value={draftHook}
-                  onChange={(e) => setDraftHook(e.target.value)}
-                  className="flex w-full rounded-xl border border-input bg-background px-3 py-2 text-sm min-h-[60px]"
-                  placeholder="Suggested hook…"
-                />
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={saveEdit}>Save</Button>
-                  <Button variant="outline" size="sm" onClick={() => setEditing(null)}>Cancel</Button>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                {project.suggestedHook || "No hook suggested."}
-              </p>
-            )}
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+              {project.suggestedHook || "No hook suggested."}
+            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">Recommended style</CardTitle>
-            {editing !== "style" && (
-              <Button variant="ghost" size="sm" onClick={() => startEdit("style")}>
-                Edit
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={regeneratingStyle}
+              onClick={async () => {
+                if (!projectId) return;
+                if (regenerateInFlightRef.current) return;
+                regenerateInFlightRef.current = true;
+                setRegeneratingStyle(true);
+                try {
+                  const result = await regenerateStyle({ projectId });
+                  if (!result?.success) {
+                    console.warn("Style regeneration did not update.");
+                  }
+                } catch (e) {
+                  console.error("Regenerate style failed:", e);
+                } finally {
+                  regenerateInFlightRef.current = false;
+                  setRegeneratingStyle(false);
+                }
+              }}
+            >
+              {regeneratingStyle ? "Regenerating…" : "Regenerate"}
+            </Button>
           </CardHeader>
           <CardContent>
-            {editing === "style" ? (
-              <div className="space-y-2">
-                <textarea
-                  value={draftStyle}
-                  onChange={(e) => setDraftStyle(e.target.value)}
-                  className="flex w-full rounded-xl border border-input bg-background px-3 py-2 text-sm min-h-[60px]"
-                  placeholder="Recommended style…"
-                />
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={saveEdit}>Save</Button>
-                  <Button variant="outline" size="sm" onClick={() => setEditing(null)}>Cancel</Button>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                {project.recommendedStyle || "No style notes."}
-              </p>
-            )}
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+              {project.recommendedStyle || "No style notes."}
+            </p>
           </CardContent>
         </Card>
 

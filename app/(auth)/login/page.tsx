@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { Button } from "@/components/ui/button";
 
@@ -9,6 +9,12 @@ export default function LoginPage() {
   const authActions = useAuthActions();
   const signIn = authActions?.signIn;
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setAuthReady(true), 100);
+    return () => clearTimeout(t);
+  }, []);
 
   const handleGoogleSignIn = async () => {
     if (!signIn || isRedirecting) return;
@@ -50,7 +56,7 @@ export default function LoginPage() {
             type="button"
             className="w-full h-12"
             onClick={() => void handleGoogleSignIn()}
-            disabled={isRedirecting}
+            disabled={isRedirecting || !authReady}
           >
             {isRedirecting ? "Redirecting to Google…" : "Continue with Google"}
           </Button>
