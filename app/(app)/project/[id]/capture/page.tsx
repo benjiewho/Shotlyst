@@ -9,7 +9,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { Info, Maximize2, Minimize2, ChevronDown, ChevronUp } from "lucide-react";
+import { Info, ChevronDown, ChevronUp } from "lucide-react";
 import { ReplaceVideoModal } from "@/components/replace-video-modal";
 
 function formatDuration(seconds: number): string {
@@ -73,9 +73,6 @@ export default function CapturePage() {
   const updateShot = useMutation(api.shots.updateShot);
   const analyzeStrongMoments = useAction(api.ai.analyzeVideoForStrongMoments);
 
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const [recording, setRecording] = useState(false);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedDuration, setRecordedDuration] = useState(0);
   const [selectedShotId, setSelectedShotId] = useState<Id<"shots"> | null>(null);
@@ -84,22 +81,15 @@ export default function CapturePage() {
   const [error, setError] = useState<string | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
   const [analyzingShotId, setAnalyzingShotId] = useState<Id<"shots"> | null>(null);
-  const [streamAspect, setStreamAspect] = useState<{ w: number; h: number } | null>(null);
   const [previewAspect, setPreviewAspect] = useState<{ w: number; h: number } | null>(null);
   const [recordedBlobUrl, setRecordedBlobUrl] = useState<string | null>(null);
   const [savedToLibraryFeedback, setSavedToLibraryFeedback] = useState(false);
   const [revealedFeedbackShotId, setRevealedFeedbackShotId] = useState<Id<"shots"> | null>(null);
   const [shotListExpanded, setShotListExpanded] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const cameraWrapperRef = useRef<HTMLDivElement>(null);
   const reviewVideoRef = useRef<HTMLVideoElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const recordingStartRef = useRef<number>(0);
   const hasSetInitialSelectionRef = useRef(false);
   const prevSelectedShotIdRef = useRef<Id<"shots"> | null>(null);
+  const nativeCameraInputRef = useRef<HTMLInputElement>(null);
 
   const pendingShots = useMemo(
     () => shots?.filter((s) => s.status === "pending") ?? [],
@@ -140,10 +130,7 @@ export default function CapturePage() {
     return sorted.find((s) => s.order > selectedShot.order && s.status !== "captured") ?? null;
   }, [shots, selectedShot]);
 
-  const cardAspect = cameraOpen ? streamAspect : null;
-  const cardContentStyle = cardAspect
-    ? { aspectRatio: cardAspect.w / cardAspect.h }
-    : undefined;
+  const cardContentStyle = undefined;
 
   useEffect(() => {
     if (!projectId || !shots?.length) {
@@ -165,39 +152,15 @@ export default function CapturePage() {
     const prev = prevSelectedShotIdRef.current;
     prevSelectedShotIdRef.current = selectedShotId;
     if (prev !== null && prev !== selectedShotId) {
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
-        setStream(null);
-      }
-      setCameraOpen(false);
-      setRecording(false);
       setRecordedBlob(null);
       setRecordedDuration(0);
-      setStreamAspect(null);
       setPreviewAspect(null);
       if (recordedBlobUrl) {
         URL.revokeObjectURL(recordedBlobUrl);
         setRecordedBlobUrl(null);
       }
-      mediaRecorderRef.current = null;
-      chunksRef.current = [];
     }
-  }, [selectedShotId, stream, recordedBlobUrl]);
-
-  useEffect(() => {
-    if (!cameraOpen || !stream) return;
-    const video = videoRef.current;
-    if (video) video.srcObject = stream;
-    return () => {
-      if (video) video.srcObject = null;
-    };
-  }, [cameraOpen, stream]);
-
-  useEffect(() => {
-    const onFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, []);
+  }, [selectedShotId, recordedBlobUrl]);
 
   useEffect(() => {
     if (!recordedBlob && !(selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl)) {
@@ -222,82 +185,6 @@ export default function CapturePage() {
   // recordedBlobUrl is read only in the cleanup path when recordedBlob is cleared; including it in deps would re-run when we set it
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordedBlob]);
-
-  const openCamera = useCallback(async () => {
-    setError(null);
-    setStreamAspect(null);
-    try {
-      const isPortrait = typeof window !== "undefined" && window.innerHeight > window.innerWidth;
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment",
-          ...(isPortrait
-            ? { width: { ideal: 720 }, height: { ideal: 1280 } }
-            : { width: { ideal: 1280 }, height: { ideal: 720 } }),
-        },
-        audio: true,
-      });
-      setStream(mediaStream);
-      setCameraOpen(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not access camera.");
-    }
-  }, []);
-
-  const closeCamera = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach((t) => t.stop());
-      setStream(null);
-    }
-    setCameraOpen(false);
-    setRecording(false);
-    setRecordedBlob(null);
-    setRecordedDuration(0);
-    setStreamAspect(null);
-    setPreviewAspect(null);
-    mediaRecorderRef.current = null;
-    chunksRef.current = [];
-  }, [stream]);
-
-  const stopStreamOnly = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach((t) => t.stop());
-      setStream(null);
-    }
-    setCameraOpen(false);
-    setStreamAspect(null);
-  }, [stream]);
-
-  const startRecording = useCallback(() => {
-    if (!stream || !videoRef.current) return;
-    chunksRef.current = [];
-    const recorder = new MediaRecorder(stream, {
-      mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-        ? "video/webm;codecs=vp9"
-        : "video/webm",
-      videoBitsPerSecond: 2500000,
-    });
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data);
-    };
-    recorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
-      setRecordedBlob(blob);
-      setRecordedDuration((Date.now() - recordingStartRef.current) / 1000);
-    };
-    mediaRecorderRef.current = recorder;
-    recorder.start(200);
-    recordingStartRef.current = Date.now();
-    setRecording(true);
-  }, [stream]);
-
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop();
-    }
-    setRecording(false);
-    stopStreamOnly();
-  }, [stopStreamOnly]);
 
   const confirmCapture = useCallback(async () => {
     if (!currentShot || !recordedBlob) return;
@@ -358,7 +245,9 @@ export default function CapturePage() {
       setSelectedShotId(remaining.length > 0 ? remaining[0]._id : null);
       if (remaining.length > 0) {
         window.scrollTo({ top: 0, behavior: "smooth" });
-        closeCamera();
+        if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
+        setRecordedBlobUrl(null);
+        setPreviewAspect(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
@@ -366,7 +255,7 @@ export default function CapturePage() {
       setIsUploading(false);
       setUploadProgress(null);
     }
-  }, [currentShot, recordedBlob, recordedDuration, generateUploadUrl, saveToLibrary, linkScene, analyzeStrongMoments, pendingShots, totalShots, capturedCount, isUploading, projectId, router, closeCamera]);
+  }, [currentShot, recordedBlob, recordedDuration, recordedBlobUrl, generateUploadUrl, saveToLibrary, linkScene, analyzeStrongMoments, pendingShots, totalShots, capturedCount, isUploading, projectId, router]);
 
   const saveToLibraryOnly = useCallback(async () => {
     if (!currentShot || !recordedBlob || !projectId) return;
@@ -428,6 +317,22 @@ export default function CapturePage() {
     setRecordedBlob(null);
     setRecordedDuration(0);
     setPreviewAspect(null);
+  }, []);
+
+  const handleNativeCameraFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    setRecordedBlob(file);
+    const url = URL.createObjectURL(file);
+    setRecordedBlobUrl(url);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.onloadedmetadata = () => {
+      setRecordedDuration(Number.isFinite(video.duration) ? video.duration : 0);
+    };
+    video.src = url;
   }, []);
 
   if (!projectId) {
@@ -598,8 +503,7 @@ export default function CapturePage() {
             recordedBlob ||
             (selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl)
               ? ""
-              : "max-h-[70vh]",
-            !cardAspect && cameraOpen && "aspect-[9/16]"
+              : "max-h-[70vh]"
           )}
           style={cardContentStyle}
         >
@@ -802,81 +706,26 @@ export default function CapturePage() {
             <p className="text-sm text-muted-foreground p-4">
               Video unavailable
             </p>
-          ) : cameraOpen ? (
-            <div className="flex flex-col flex-1 min-h-0 w-full">
-              <div
-                ref={cameraWrapperRef}
-                className="flex-1 min-h-0 flex items-center justify-center bg-black/5 rounded-lg overflow-hidden relative w-full"
-              >
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-contain"
-                  onLoadedMetadata={() => {
-                    const v = videoRef.current;
-                    if (v?.videoWidth && v?.videoHeight)
-                      setStreamAspect({ w: v.videoWidth, h: v.videoHeight });
-                  }}
-                />
-                {!isFullscreen ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="icon"
-                    className="absolute top-2 right-2 h-9 w-9 rounded-lg bg-background/80 hover:bg-background shadow-md"
-                    aria-label="Fullscreen camera"
-                    onClick={() => {
-                      cameraWrapperRef.current?.requestFullscreen?.().catch(() => {});
-                    }}
-                  >
-                    <Maximize2 className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="icon"
-                    className="absolute top-2 right-2 h-9 w-9 rounded-lg bg-background/80 hover:bg-background shadow-md z-10"
-                    aria-label="Exit fullscreen"
-                    onClick={() => document.exitFullscreen?.()}
-                  >
-                    <Minimize2 className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-              <div className="flex justify-center gap-2 pt-4 pb-2">
-                {!recording ? (
-                  <Button
-                    size="lg"
-                    className="min-h-12 rounded-full w-14 h-14 bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg ring-2 ring-background/80"
-                    onClick={startRecording}
-                  >
-                    Record
-                  </Button>
-                ) : (
-                  <Button
-                    size="lg"
-                    className="min-h-12 rounded-full w-14 h-14 bg-red-600 text-white hover:bg-red-700 shadow-lg ring-2 ring-background/80 animate-pulse"
-                    onClick={stopRecording}
-                  >
-                    Stop
-                  </Button>
-                )}
-              </div>
-            </div>
           ) : (
             <div className="flex flex-col items-center justify-start gap-4 p-6 w-full">
               <p className="text-sm text-muted-foreground text-center">
                 Open the camera to record this shot.
               </p>
+              <input
+                ref={nativeCameraInputRef}
+                type="file"
+                accept="video/*"
+                capture="environment"
+                className="hidden"
+                aria-label="Record video"
+                onChange={handleNativeCameraFile}
+              />
               <div className="flex flex-col gap-2 w-full max-w-xs">
                 <Button
                   type="button"
                   size="lg"
                   className="min-h-12"
-                  onClick={openCamera}
+                  onClick={() => nativeCameraInputRef.current?.click()}
                   disabled={!currentShot}
                 >
                   Open camera
@@ -897,18 +746,6 @@ export default function CapturePage() {
           )}
         </CardContent>
       </Card>
-
-      {cameraOpen && !recordedBlob && currentShot && (
-        <div className="flex gap-2 mb-4">
-          <Button
-            variant="outline"
-            className="flex-1 min-h-11"
-            onClick={closeCamera}
-          >
-            Close camera
-          </Button>
-        </div>
-      )}
 
       {/* Per-shot notes for current shot */}
       {currentShot && (

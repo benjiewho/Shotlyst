@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { hasConvex } from "@/lib/convex/has-convex";
-import { Trash2, ChevronDown, ChevronRight, Film } from "lucide-react";
+import { Trash2, ChevronDown, ChevronRight, Film, Download } from "lucide-react";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -61,6 +61,27 @@ function MediaThumbnail({
 }) {
   const url = useQuery(api.media.getUrl, { storageId });
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = useCallback(async () => {
+    if (url === undefined || url === null) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Fetch failed");
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `shotlyst-video-${storageId}.mp4`;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.open(url, "_blank");
+    } finally {
+      setDownloading(false);
+    }
+  }, [url, storageId]);
 
   if (url === undefined) {
     return (
@@ -129,6 +150,16 @@ function MediaThumbnail({
             Unassign
           </Button>
         )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs"
+          onClick={handleDownload}
+          disabled={disabled || downloading}
+          aria-label="Download"
+        >
+          <Download className="h-3.5 w-3.5" />
+        </Button>
         <Button
           variant="ghost"
           size="sm"
