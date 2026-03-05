@@ -554,7 +554,7 @@ export default function CapturePage() {
         >
           {recordedBlob ? (
             <div className="flex flex-1 flex-col items-center gap-4 p-4 w-full min-h-0 min-w-0">
-              <div className="flex-1 min-h-0 w-full flex items-center justify-center">
+              <div className="flex-1 w-full flex items-center justify-center" style={{ minHeight: "max(40vh, 280px)" }}>
                 {recordedBlobUrl && (
                   <video
                     key={recordedBlobUrl}
@@ -586,25 +586,25 @@ export default function CapturePage() {
                   </p>
                 </div>
               )}
-              <div className="flex gap-2 w-full">
+              <div className="flex gap-2 w-full flex-wrap">
                 <Button
                   variant="outline"
-                  className="flex-1 min-h-11"
+                  className="flex-1 min-h-11 min-w-0"
                   onClick={retake}
                   disabled={isUploading}
                 >
                   Retake
                 </Button>
                 <Button
-                  className="flex-1 min-h-11"
+                  className="flex-1 min-h-11 min-w-0"
                   onClick={confirmCapture}
                   disabled={isUploading}
                 >
-                  {isUploading ? "Uploading…" : "Use Scene"}
+                  {isUploading ? "Uploading…" : "Assign Video"}
                 </Button>
                 <Button
                   variant="outline"
-                  className="flex-1 min-h-11"
+                  className="flex-1 min-h-11 min-w-0 text-sm px-2"
                   onClick={saveToLibraryOnly}
                   disabled={isUploading}
                 >
@@ -683,20 +683,22 @@ export default function CapturePage() {
               Video unavailable
             </p>
           ) : cameraOpen ? (
-            <>
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-contain"
-                onLoadedMetadata={() => {
-                  const v = videoRef.current;
-                  if (v?.videoWidth && v?.videoHeight)
-                    setStreamAspect({ w: v.videoWidth, h: v.videoHeight });
-                }}
-              />
-              <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2">
+            <div className="flex flex-col flex-1 min-h-0 w-full">
+              <div className="flex-1 min-h-0 flex items-center justify-center bg-black/5 rounded-lg overflow-hidden">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-contain"
+                  onLoadedMetadata={() => {
+                    const v = videoRef.current;
+                    if (v?.videoWidth && v?.videoHeight)
+                      setStreamAspect({ w: v.videoWidth, h: v.videoHeight });
+                  }}
+                />
+              </div>
+              <div className="flex justify-center gap-2 pt-4 pb-2">
                 {!recording ? (
                   <Button
                     size="lg"
@@ -715,9 +717,9 @@ export default function CapturePage() {
                   </Button>
                 )}
               </div>
-            </>
+            </div>
           ) : (
-            <div className="flex flex-col items-center gap-4 p-6">
+            <div className="flex flex-col items-center justify-center gap-4 p-6 min-h-[50vh] w-full">
               <p className="text-sm text-muted-foreground text-center">
                 Open the camera to record this shot.
               </p>

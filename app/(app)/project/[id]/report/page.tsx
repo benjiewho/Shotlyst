@@ -185,12 +185,12 @@ export default function ReportPage() {
             <CardTitle className="text-base">Shot list</CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="grid gap-3 sm:grid-cols-2">
+            <ul className="divide-y-2 divide-primary/20">
               {shots.map((s, i) => (
                 <li
                   key={s._id}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg p-2",
+                    "flex items-center gap-3 rounded-lg p-4 first:rounded-t-lg last:rounded-b-lg",
                     s.status === "captured" && "bg-green-100 dark:bg-green-900/30",
                     s.status !== "captured" && "bg-primary/10 dark:bg-primary/20"
                   )}
@@ -198,16 +198,16 @@ export default function ReportPage() {
                   {s.status === "captured" && s.sceneStorageId ? (
                     <ReportSceneThumbnail storageId={s.sceneStorageId} />
                   ) : (
-                    <div className="aspect-video w-24 rounded-lg bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                    <div className="aspect-video w-24 shrink-0 rounded-lg bg-muted flex items-center justify-center text-xs text-muted-foreground">
                       No clip
                     </div>
                   )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground truncate">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-sm font-medium text-foreground break-words">
                       {i + 1}. {s.title}
                     </p>
                     {s.status !== "captured" && (
-                      <Button variant="outline" size="sm" className="mt-1" asChild>
+                      <Button variant="outline" size="sm" className="mt-1 w-full sm:w-auto" asChild>
                         <Link href={`/project/${project._id}/capture?shot=${s._id}`}>
                           Capture this shot
                         </Link>

@@ -198,6 +198,11 @@ export default function NewProjectPage() {
             <Link href="/dashboard">Cancel</Link>
           </Button>
         </div>
+        {isSubmitting && (
+          <div className="mt-3 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+            <div className="h-full min-w-[30%] w-1/3 rounded-full bg-primary animate-pulse" />
+          </div>
+        )}
       </form>
     </div>
   );

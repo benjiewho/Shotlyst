@@ -80,6 +80,7 @@ function SortableShotRow({
   linkScene: (args: { shotId: Id<"shots">; storageId: Id<"_storage">; duration: number }) => Promise<unknown>;
 }) {
   const [isReplacing, setIsReplacing] = useState(false);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const {
     attributes,
@@ -100,66 +101,18 @@ function SortableShotRow({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex gap-3 items-start py-4",
+        "flex flex-col gap-3 rounded-xl px-4 py-4",
         shot.status === "captured" && "bg-green-100 dark:bg-green-900/30",
         shot.status !== "captured" && !isDragging && "bg-primary/10 dark:bg-primary/20",
         isDragging && "opacity-50"
       )}
     >
-      <span
-        className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium mt-0.5",
-          shot.status === "captured"
-            ? "bg-green-200 dark:bg-green-800 text-green-900 dark:text-green-100"
-            : "bg-primary text-primary-foreground"
-        )}
-      >
-        {index + 1}
-      </span>
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <select
-            value={shot.shotCategory ?? "establishing_shot"}
-            onChange={(e) =>
-              updateShot({
-                shotId: shot._id,
-                shotCategory: e.target.value as ShotCategoryValue,
-              })
-            }
-            className="rounded-lg border border-input bg-background px-2 py-1 text-xs"
-          >
-            {SHOT_CATEGORIES.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-            aria-label="Delete shot"
-            onClick={async () => {
-              await removeShot({ shotId: shot._id });
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            defaultValue={shot.title}
-            onBlur={(e) => {
-              const v = e.target.value.trim();
-              if (v && v !== shot.title)
-                updateShot({ shotId: shot._id, title: v });
-            }}
-            className="flex-1 min-w-0 rounded-lg border border-input bg-background px-2 py-1 text-sm font-medium"
-          />
+      {/* Top row: drag handle (center), delete (right) */}
+      <div className="flex items-center justify-between">
+        <div className="flex-1 flex justify-center">
           <button
             type="button"
-            className="touch-none p-1.5 rounded cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground hover:bg-muted/80 shrink-0 self-center"
+            className="touch-none p-1.5 rounded cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground hover:bg-muted/80"
             aria-label="Drag to reorder"
             {...attributes}
             {...listeners}
@@ -167,76 +120,147 @@ function SortableShotRow({
             <GripVertical className="h-4 w-4" />
           </button>
         </div>
-        {shot.status === "captured" && shot.sceneStorageId && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <SceneThumbnail storageId={shot.sceneStorageId} />
-            <input
-              ref={replaceInputRef}
-              type="file"
-              accept="video/*"
-              className="hidden"
-              aria-label="Replace video"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (!file || isReplacing) return;
-                setIsReplacing(true);
-                try {
-                  const url = URL.createObjectURL(file);
-                  const video = document.createElement("video");
-                  video.preload = "metadata";
-                  const duration = await new Promise<number>((resolve, reject) => {
-                    video.onloadedmetadata = () => {
-                      resolve(Number.isFinite(video.duration) ? video.duration : 0);
-                      URL.revokeObjectURL(url);
-                    };
-                    video.onerror = () => reject(new Error("Could not read video"));
-                    video.src = url;
-                  });
-                  const uploadUrl = await generateUploadUrl();
-                  const contentType = file.type.split(";")[0].trim() || "video/webm";
-                  const result = await fetch(uploadUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": contentType },
-                    body: file,
-                  });
-                  if (!result.ok) {
-                    const body = await result.text();
-                    throw new Error(body ? `${result.status}: ${body}` : `Upload failed (${result.status})`);
-                  }
-                  const { storageId } = (await result.json()) as { storageId: Id<"_storage"> };
-                  await linkScene({ shotId: shot._id, storageId, duration: Math.round(duration) });
-                } finally {
-                  setIsReplacing(false);
-                }
-              }}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={isReplacing}
-              onClick={() => replaceInputRef.current?.click()}
-            >
-              {isReplacing ? "Replacing…" : "Replace"}
-            </Button>
-            <Button variant="outline" size="sm" asChild>
-              <Link href={`/project/${projectId}/capture?shot=${shot._id}`}>
-                Retake
-              </Link>
-            </Button>
-          </div>
-        )}
-        <textarea
-          defaultValue={shot.description}
-          onBlur={(e) => {
-            const v = e.target.value;
-            if (v !== shot.description)
-              updateShot({ shotId: shot._id, description: v });
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+          aria-label="Delete shot"
+          onClick={async () => {
+            await removeShot({ shotId: shot._id });
           }}
-          className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs text-muted-foreground min-h-[60px]"
-          placeholder="Description / notes…"
-        />
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="flex gap-3 items-start min-w-0">
+        <span
+          className={cn(
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium",
+            shot.status === "captured"
+              ? "bg-green-200 dark:bg-green-800 text-green-900 dark:text-green-100"
+              : "bg-primary text-primary-foreground"
+          )}
+        >
+          {index + 1}
+        </span>
+        <div className="min-w-0 flex-1 space-y-2">
+          <div>
+            <label className="text-xs text-muted-foreground block mb-0.5">Shot type</label>
+            <select
+              value={shot.shotCategory ?? "establishing_shot"}
+              onChange={(e) =>
+                updateShot({
+                  shotId: shot._id,
+                  shotCategory: e.target.value as ShotCategoryValue,
+                })
+              }
+              className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs"
+            >
+              {SHOT_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground block mb-0.5">Title</label>
+            <input
+              type="text"
+              defaultValue={shot.title}
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if (v && v !== shot.title)
+                  updateShot({ shotId: shot._id, title: v });
+              }}
+              className="w-full rounded-lg border border-input bg-background px-2 py-1 text-sm font-medium"
+            />
+          </div>
+          {shot.status === "captured" && shot.sceneStorageId && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <SceneThumbnail storageId={shot.sceneStorageId} />
+              <input
+                ref={replaceInputRef}
+                type="file"
+                accept="video/*"
+                className="hidden"
+                aria-label="Replace video"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file || isReplacing) return;
+                  setIsReplacing(true);
+                  try {
+                    const url = URL.createObjectURL(file);
+                    const video = document.createElement("video");
+                    video.preload = "metadata";
+                    const duration = await new Promise<number>((resolve, reject) => {
+                      video.onloadedmetadata = () => {
+                        resolve(Number.isFinite(video.duration) ? video.duration : 0);
+                        URL.revokeObjectURL(url);
+                      };
+                      video.onerror = () => reject(new Error("Could not read video"));
+                      video.src = url;
+                    });
+                    const uploadUrl = await generateUploadUrl();
+                    const contentType = file.type.split(";")[0].trim() || "video/webm";
+                    const result = await fetch(uploadUrl, {
+                      method: "POST",
+                      headers: { "Content-Type": contentType },
+                      body: file,
+                    });
+                    if (!result.ok) {
+                      const body = await result.text();
+                      throw new Error(body ? `${result.status}: ${body}` : `Upload failed (${result.status})`);
+                    }
+                    const { storageId } = (await result.json()) as { storageId: Id<"_storage"> };
+                    await linkScene({ shotId: shot._id, storageId, duration: Math.round(duration) });
+                  } finally {
+                    setIsReplacing(false);
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isReplacing}
+                onClick={() => replaceInputRef.current?.click()}
+              >
+                {isReplacing ? "Replacing…" : "Replace"}
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/project/${projectId}/capture?shot=${shot._id}`}>
+                  Retake
+                </Link>
+              </Button>
+            </div>
+          )}
+          <div>
+            <div className="flex items-center justify-between mb-0.5">
+              <label className="text-xs text-muted-foreground">Description</label>
+              <button
+                type="button"
+                className="text-xs text-primary hover:underline"
+                onClick={() => setDescriptionExpanded((e) => !e)}
+              >
+                {descriptionExpanded ? "Collapse" : "Expand"}
+              </button>
+            </div>
+            <textarea
+              defaultValue={shot.description}
+              onBlur={(e) => {
+                const v = e.target.value;
+                if (v !== shot.description)
+                  updateShot({ shotId: shot._id, description: v });
+              }}
+              className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs text-muted-foreground resize-none"
+              placeholder="Description / notes…"
+              rows={descriptionExpanded ? 5 : 2}
+            />
+          </div>
+        </div>
       </div>
     </li>
   );
@@ -365,25 +389,16 @@ export default function ProjectPlanPage() {
 
       <div className="mb-4 rounded-lg bg-muted/60 border border-border px-3 py-2 text-xs text-muted-foreground flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <p><span className="font-medium text-foreground">Scene generation:</span> {planSourceLabel}</p>
+          <p><span className="font-medium text-foreground">Scene Generation By AI model:</span> {planSourceLabel}</p>
           {planUpdatedAt && <p>Plan updated: {planUpdatedAt}</p>}
         </div>
         <div className="flex gap-2">
           <Button
-            variant="outline"
             size="sm"
             disabled={isRegeneratingPlan}
             onClick={() => setRegenerateDialogMode("regenerate")}
           >
             {isRegeneratingPlan ? "Regenerating…" : "Regenerate"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={isRegeneratingPlan}
-            onClick={() => setRegenerateDialogMode("save-and-regenerate")}
-          >
-            {isRegeneratingPlan ? "Regenerating…" : "Save & Regenerate"}
           </Button>
         </div>
       </div>
@@ -424,10 +439,19 @@ export default function ProjectPlanPage() {
                   className="flex w-full rounded-xl border border-input bg-background px-3 py-2 text-sm min-h-[80px]"
                   placeholder="Goal summary…"
                 />
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button size="sm" onClick={saveEdit}>Save</Button>
                   <Button variant="outline" size="sm" onClick={() => setEditing(null)}>Cancel</Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={isRegeneratingPlan}
+                    onClick={() => setRegenerateDialogMode("save-and-regenerate")}
+                  >
+                    {isRegeneratingPlan ? "Regenerating…" : "Save & Regenerate"}
+                  </Button>
                 </div>
+                <p className="text-xs text-muted-foreground">Save & Regenerate saves your goal and replaces the full plan (clears current shots and videos).</p>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground whitespace-pre-wrap">
@@ -441,7 +465,6 @@ export default function ProjectPlanPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">Suggested hook</CardTitle>
             <Button
-              variant="ghost"
               size="sm"
               disabled={regeneratingHook}
               onClick={async () => {
@@ -476,7 +499,6 @@ export default function ProjectPlanPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">Recommended style</CardTitle>
             <Button
-              variant="ghost"
               size="sm"
               disabled={regeneratingStyle}
               onClick={async () => {
@@ -550,7 +572,7 @@ export default function ProjectPlanPage() {
                   items={shots.map((s) => s._id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  <ol className="divide-y divide-border">
+                  <ol className="divide-y-2 divide-primary/20">
                     {shots.map((shot, i) => (
                       <SortableShotRow
                         key={shot._id}
