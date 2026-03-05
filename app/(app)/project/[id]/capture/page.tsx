@@ -82,6 +82,7 @@ export default function CapturePage() {
   const [recordedBlobUrl, setRecordedBlobUrl] = useState<string | null>(null);
   const [savedToLibraryFeedback, setSavedToLibraryFeedback] = useState(false);
   const [isReplacingAssigned, setIsReplacingAssigned] = useState(false);
+  const [revealedFeedbackShotId, setRevealedFeedbackShotId] = useState<Id<"shots"> | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraWrapperRef = useRef<HTMLDivElement>(null);
@@ -105,6 +106,15 @@ export default function CapturePage() {
       ? { storageId: selectedShot.sceneStorageId }
       : "skip"
   );
+  const mediaForShot = useQuery(
+    api.media.listByShot,
+    selectedShot?.status === "captured" && selectedShot?._id
+      ? { shotId: selectedShot._id }
+      : "skip"
+  );
+  const assignedVideoInLibrary =
+    !!selectedShot?.sceneStorageId &&
+    !!mediaForShot?.some((m) => m.storageId === selectedShot.sceneStorageId);
   const capturedCount = shots?.filter((s) => s.status === "captured").length ?? 0;
   const totalShots = shots?.length ?? 0;
   const allCaptured = totalShots > 0 && capturedCount === totalShots;
@@ -115,8 +125,7 @@ export default function CapturePage() {
     return sorted.find((s) => s.order > selectedShot.order && s.status !== "captured") ?? null;
   }, [shots, selectedShot]);
 
-  const cardAspect =
-    recordedBlob ? previewAspect : cameraOpen ? streamAspect : null;
+  const cardAspect = cameraOpen ? streamAspect : null;
   const cardContentStyle = cardAspect
     ? { aspectRatio: cardAspect.w / cardAspect.h }
     : undefined;
@@ -280,6 +289,7 @@ export default function CapturePage() {
         xhr.setRequestHeader("Content-Type", contentType);
         xhr.send(recordedBlob);
       });
+      // Save to library first, then assign to scene (so unassign only clears assignment; video stays in library).
       await saveToLibrary({
         projectId: projectId!,
         shotId: currentShot._id,
@@ -595,12 +605,11 @@ export default function CapturePage() {
         <CardContent
           className={cn(
             "relative p-0 flex flex-col items-center justify-center",
-            recordedBlob
-              ? "max-h-[85vh] overflow-y-auto"
-              : selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl
-                ? ""
-                : "max-h-[70vh]",
-            !cardAspect && (recordedBlob || cameraOpen) && "aspect-[9/16]"
+            recordedBlob ||
+            (selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl)
+              ? ""
+              : "max-h-[70vh]",
+            !cardAspect && cameraOpen && "aspect-[9/16]"
           )}
           style={cardContentStyle}
         >
@@ -689,6 +698,9 @@ export default function CapturePage() {
                 />
               </div>
               <p className="text-xs text-muted-foreground flex-shrink-0">Saved video</p>
+              {assignedVideoInLibrary && (
+                <p className="text-xs text-primary font-medium flex-shrink-0">Saved to library</p>
+              )}
               <input
                 ref={replaceAssignedInputRef}
                 type="file"
@@ -781,7 +793,7 @@ export default function CapturePage() {
               </div>
               <div className="w-full space-y-2 flex-shrink-0 min-h-0">
                 <p className="text-sm font-medium text-foreground">Scene feedback</p>
-                {selectedShot.sceneFeedback ? (
+                {revealedFeedbackShotId === selectedShot._id && selectedShot.sceneFeedback ? (
                   <div className="space-y-2 text-sm">
                     <p className="text-muted-foreground">{selectedShot.sceneFeedback.alignmentSummary}</p>
                     {selectedShot.sceneFeedback.pros.length > 0 && (
@@ -805,6 +817,15 @@ export default function CapturePage() {
                       </div>
                     )}
                   </div>
+                ) : selectedShot.sceneFeedback ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRevealedFeedbackShotId(selectedShot._id)}
+                  >
+                    Show feedback
+                  </Button>
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     Run analysis above to see alignment and feedback.
