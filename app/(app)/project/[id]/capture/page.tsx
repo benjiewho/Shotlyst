@@ -64,7 +64,6 @@ export default function CapturePage() {
   const updateStatus = useMutation(api.shots.updateStatus);
   const updateShot = useMutation(api.shots.updateShot);
   const analyzeStrongMoments = useAction(api.ai.analyzeVideoForStrongMoments);
-  const analyzeVideoSceneFeedback = useAction(api.ai.analyzeVideoSceneFeedback);
 
   const [cameraOpen, setCameraOpen] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -83,7 +82,6 @@ export default function CapturePage() {
   const [recordedBlobUrl, setRecordedBlobUrl] = useState<string | null>(null);
   const [savedToLibraryFeedback, setSavedToLibraryFeedback] = useState(false);
   const [isReplacingAssigned, setIsReplacingAssigned] = useState(false);
-  const [analyzingFeedbackShotId, setAnalyzingFeedbackShotId] = useState<Id<"shots"> | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraWrapperRef = useRef<HTMLDivElement>(null);
@@ -604,7 +602,7 @@ export default function CapturePage() {
             recordedBlob
               ? "max-h-[85vh] overflow-y-auto"
               : selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl
-                ? "max-h-[85vh] overflow-y-auto"
+                ? ""
                 : "max-h-[70vh]",
             !cardAspect && (recordedBlob || (selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl) || cameraOpen) && "aspect-[9/16]"
           )}
@@ -712,8 +710,21 @@ export default function CapturePage() {
                 >
                   {isReplacingAssigned ? "Replacing…" : "Replace"}
                 </Button>
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={`/project/${projectId}/capture?shot=${selectedShot._id}`}>Retake</Link>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isReplacingAssigned}
+                  onClick={async () => {
+                    if (!selectedShot._id) return;
+                    try {
+                      await unassignShot({ shotId: selectedShot._id });
+                      await openCamera();
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Unassign failed.");
+                    }
+                  }}
+                >
+                  Retake
                 </Button>
                 <Button
                   variant="outline"
@@ -721,7 +732,11 @@ export default function CapturePage() {
                   disabled={isReplacingAssigned}
                   onClick={async () => {
                     if (!selectedShot._id) return;
-                    await unassignShot({ shotId: selectedShot._id });
+                    try {
+                      await unassignShot({ shotId: selectedShot._id });
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Unassign failed.");
+                    }
                   }}
                 >
                   Unassign
@@ -794,26 +809,10 @@ export default function CapturePage() {
                       </div>
                     )}
                   </div>
-                ) : analyzingFeedbackShotId === selectedShot._id ? (
-                  <p className="text-xs text-muted-foreground">Analyzing…</p>
                 ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={analyzingFeedbackShotId !== null}
-                    onClick={async () => {
-                      if (!selectedShot._id) return;
-                      setAnalyzingFeedbackShotId(selectedShot._id);
-                      try {
-                        await analyzeVideoSceneFeedback({ shotId: selectedShot._id });
-                      } finally {
-                        setAnalyzingFeedbackShotId(null);
-                      }
-                    }}
-                  >
-                    Get AI feedback
-                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Run analysis above to see alignment and feedback.
+                  </p>
                 )}
               </div>
             </div>

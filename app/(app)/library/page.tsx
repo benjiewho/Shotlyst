@@ -78,26 +78,35 @@ function MediaThumbnail({
   }
 
   return (
-    <div
-      className={cn(
-        "relative rounded-lg overflow-hidden border-2 min-w-0 flex-1 max-w-[160px]",
-        isAssigned
-          ? "border-green-600 dark:border-green-500 ring-2 ring-green-500/30"
-          : "border-border"
-      )}
-    >
-      <video
-        src={url}
-        className="aspect-video w-full object-cover"
-        muted
-        playsInline
-        preload="metadata"
-      />
-      <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs px-2 py-1 flex justify-between items-center">
-        <span>{formatDuration(duration)}</span>
-        {isAssigned && <span className="font-medium">Assigned</span>}
+    <div className="flex flex-col min-w-0 flex-1 max-w-[160px]">
+      <div
+        className={cn(
+          "relative rounded-t-lg overflow-hidden border-2 border-b-0",
+          isAssigned
+            ? "border-green-600 dark:border-green-500 ring-2 ring-green-500/30"
+            : "border-border"
+        )}
+      >
+        <video
+          src={url}
+          className="aspect-video w-full object-cover block"
+          muted
+          playsInline
+          preload="metadata"
+        />
+        <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs px-2 py-1 flex justify-between items-center">
+          <span>{formatDuration(duration)}</span>
+          {isAssigned && <span className="font-medium">Assigned</span>}
+        </div>
       </div>
-      <div className="flex gap-1 mt-1 flex-wrap">
+      <div
+        className={cn(
+          "flex gap-1 flex-wrap p-1 rounded-b-lg border-2 border-t-0",
+          isAssigned
+            ? "border-green-600 dark:border-green-500 bg-green-50/50 dark:bg-green-950/20"
+            : "border-border bg-muted/30"
+        )}
+      >
         {!isAssigned && (
           <Button
             variant="outline"
@@ -236,9 +245,6 @@ export default function LibraryPage() {
                       <div key={shot.shotId} className="pl-6 space-y-2">
                         <p className="text-sm font-medium text-foreground">
                           Scene {shot.order + 1}: {shot.shotTitle}
-                          {shot.assignedStorageId && (
-                            <span className="ml-2 text-xs text-muted-foreground font-normal">(assigned)</span>
-                          )}
                         </p>
                         <div className="flex flex-wrap gap-3">
                           {shot.media.map((m) => (

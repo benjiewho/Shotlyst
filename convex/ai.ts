@@ -215,80 +215,24 @@ Project brief:
   },
 });
 
-const STRONG_MOMENTS_PROMPT = `Watch this short video and list 2–5 strong moments that would work well for editing (e.g. hook, reaction, highlight, key moment). For each moment give the timestamp in seconds and a short reason (one phrase). Return JSON only, no markdown, no explanation: { "strongMoments": [ { "timestampSeconds": number, "reason": "string" } ] }.`;
+function buildCombinedAnalysisPrompt(goal: string, shotTitle: string, shotDescription: string): string {
+  return `Watch this short video and analyze it in two ways. Return a single JSON object only, no markdown, no explanation.
+
+1) Strong moments: List 2–5 strong moments that would work well for editing (e.g. hook, reaction, highlight, key moment). For each give timestamp in seconds and a short reason (one phrase).
+2) Scene feedback: The project goal is: "${goal}". This scene is titled "${shotTitle}" and should show: ${shotDescription}. Provide how well the video aligns, plus brief pros and cons.
+
+Return JSON in this exact shape:
+{
+  "strongMoments": [ { "timestampSeconds": number, "reason": "string" } ],
+  "sceneFeedback": {
+    "alignmentSummary": "string (1–2 sentences)",
+    "pros": ["string"],
+    "cons": ["string"]
+  }
+}`;
+}
 
 export const analyzeVideoForStrongMoments = action({
-  args: { shotId: v.id("shots") },
-  handler: async (ctx, args) => {
-    const shot = await ctx.runQuery(api.shots.getShot, {
-      shotId: args.shotId,
-    });
-    if (!shot?.sceneStorageId) throw new Error("Shot has no video");
-    const videoUrl = await ctx.runQuery(api.shots.getSceneUrl, {
-      storageId: shot.sceneStorageId,
-    });
-    if (!videoUrl) throw new Error("Could not get video URL");
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      await ctx.runMutation(api.shots.setStrongMoments, {
-        shotId: args.shotId,
-        strongMoments: [
-          { timestampSeconds: 0, reason: "Analysis unavailable (no API key)" },
-        ],
-      });
-      return { success: true };
-    }
-    const resp = await fetch(videoUrl);
-    if (!resp.ok) throw new Error(`Failed to fetch video: ${resp.status}`);
-    const buf = await resp.arrayBuffer();
-    const maxBytes = 20 * 1024 * 1024;
-    const bytes = buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf;
-    const base64 = Buffer.from(bytes).toString("base64");
-    const mimeType = (resp.headers.get("content-type") || "video/mp4").split(";")[0].trim();
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: mimeType.startsWith("video/") ? mimeType : "video/mp4",
-          data: base64,
-        },
-      },
-      { text: STRONG_MOMENTS_PROMPT },
-    ]);
-    const text = result.response.text();
-    if (!text) throw new Error("Empty response from Gemini");
-    let jsonStr = text.trim();
-    const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeBlock) jsonStr = codeBlock[1].trim();
-    const parsed = JSON.parse(jsonStr) as { strongMoments?: { timestampSeconds?: number; reason?: string }[] };
-    const list = Array.isArray(parsed.strongMoments)
-      ? parsed.strongMoments
-          .filter(
-            (m): m is { timestampSeconds: number; reason: string } =>
-              typeof m?.timestampSeconds === "number" && typeof m?.reason === "string"
-          )
-          .slice(0, 10)
-      : [];
-    await ctx.runMutation(api.shots.setStrongMoments, {
-      shotId: args.shotId,
-      strongMoments: list,
-    });
-    return { success: true };
-  },
-});
-
-const SCENE_FEEDBACK_PROMPT = (goal: string, shotTitle: string, shotDescription: string) =>
-  `You are analyzing a short video clip for a content creator. The project goal is: "${goal}". This specific scene is titled "${shotTitle}" and should show: ${shotDescription}.
-
-Watch the video and return JSON only, no markdown, no explanation:
-{ "alignmentSummary": "string", "pros": ["string"], "cons": ["string"] }
-
-- alignmentSummary: 1–2 sentences on how well the video aligns with the project goal and this scene.
-- pros: 2–3 short positive points (phrases) about the video for this scene.
-- cons: 1–2 short areas for improvement (phrases).`;
-
-export const analyzeVideoSceneFeedback = action({
   args: { shotId: v.id("shots") },
   handler: async (ctx, args) => {
     const shot = await ctx.runQuery(api.shots.getShot, { shotId: args.shotId });
@@ -301,6 +245,12 @@ export const analyzeVideoSceneFeedback = action({
     if (!videoUrl) throw new Error("Could not get video URL");
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
+      await ctx.runMutation(api.shots.setStrongMoments, {
+        shotId: args.shotId,
+        strongMoments: [
+          { timestampSeconds: 0, reason: "Analysis unavailable (no API key)" },
+        ],
+      });
       await ctx.runMutation(api.shots.setSceneFeedback, {
         shotId: args.shotId,
         sceneFeedback: {
@@ -318,7 +268,7 @@ export const analyzeVideoSceneFeedback = action({
     const bytes = buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf;
     const base64 = Buffer.from(bytes).toString("base64");
     const mimeType = (resp.headers.get("content-type") || "video/mp4").split(";")[0].trim();
-    const prompt = SCENE_FEEDBACK_PROMPT(
+    const prompt = buildCombinedAnalysisPrompt(
       project.goalSummary,
       shot.title,
       shot.description
@@ -340,19 +290,33 @@ export const analyzeVideoSceneFeedback = action({
     const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (codeBlock) jsonStr = codeBlock[1].trim();
     const parsed = JSON.parse(jsonStr) as {
-      alignmentSummary?: string;
-      pros?: string[];
-      cons?: string[];
+      strongMoments?: { timestampSeconds?: number; reason?: string }[];
+      sceneFeedback?: {
+        alignmentSummary?: string;
+        pros?: string[];
+        cons?: string[];
+      };
     };
-    const alignmentSummary =
-      typeof parsed.alignmentSummary === "string"
-        ? parsed.alignmentSummary
-        : "Analysis unavailable.";
-    const pros = Array.isArray(parsed.pros)
-      ? parsed.pros.filter((p): p is string => typeof p === "string").slice(0, 5)
+    const list = Array.isArray(parsed.strongMoments)
+      ? parsed.strongMoments
+          .filter(
+            (m): m is { timestampSeconds: number; reason: string } =>
+              typeof m?.timestampSeconds === "number" && typeof m?.reason === "string"
+          )
+          .slice(0, 10)
       : [];
-    const cons = Array.isArray(parsed.cons)
-      ? parsed.cons.filter((c): c is string => typeof c === "string").slice(0, 5)
+    await ctx.runMutation(api.shots.setStrongMoments, {
+      shotId: args.shotId,
+      strongMoments: list,
+    });
+    const sf = parsed.sceneFeedback;
+    const alignmentSummary =
+      typeof sf?.alignmentSummary === "string" ? sf.alignmentSummary : "Analysis unavailable.";
+    const pros = Array.isArray(sf?.pros)
+      ? sf.pros.filter((p): p is string => typeof p === "string").slice(0, 5)
+      : [];
+    const cons = Array.isArray(sf?.cons)
+      ? sf.cons.filter((c): c is string => typeof c === "string").slice(0, 5)
       : [];
     await ctx.runMutation(api.shots.setSceneFeedback, {
       shotId: args.shotId,
