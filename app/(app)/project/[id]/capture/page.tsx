@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Info, Maximize2 } from "lucide-react";
+import { ReplaceVideoModal } from "@/components/replace-video-modal";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -81,7 +82,6 @@ export default function CapturePage() {
   const [previewAspect, setPreviewAspect] = useState<{ w: number; h: number } | null>(null);
   const [recordedBlobUrl, setRecordedBlobUrl] = useState<string | null>(null);
   const [savedToLibraryFeedback, setSavedToLibraryFeedback] = useState(false);
-  const [isReplacingAssigned, setIsReplacingAssigned] = useState(false);
   const [revealedFeedbackShotId, setRevealedFeedbackShotId] = useState<Id<"shots"> | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -91,8 +91,8 @@ export default function CapturePage() {
   const chunksRef = useRef<Blob[]>([]);
   const recordingStartRef = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const replaceAssignedInputRef = useRef<HTMLInputElement>(null);
   const hasSetInitialSelectionRef = useRef(false);
+  const prevSelectedShotIdRef = useRef<Id<"shots"> | null>(null);
 
   const pendingShots = useMemo(
     () => shots?.filter((s) => s.status === "pending") ?? [],
@@ -147,6 +147,29 @@ export default function CapturePage() {
   }, [projectId, shots, searchParams]);
 
   useEffect(() => {
+    const prev = prevSelectedShotIdRef.current;
+    prevSelectedShotIdRef.current = selectedShotId;
+    if (prev !== null && prev !== selectedShotId) {
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+        setStream(null);
+      }
+      setCameraOpen(false);
+      setRecording(false);
+      setRecordedBlob(null);
+      setRecordedDuration(0);
+      setStreamAspect(null);
+      setPreviewAspect(null);
+      if (recordedBlobUrl) {
+        URL.revokeObjectURL(recordedBlobUrl);
+        setRecordedBlobUrl(null);
+      }
+      mediaRecorderRef.current = null;
+      chunksRef.current = [];
+    }
+  }, [selectedShotId, stream, recordedBlobUrl]);
+
+  useEffect(() => {
     if (!cameraOpen || !stream) return;
     const video = videoRef.current;
     if (video) video.srcObject = stream;
@@ -175,6 +198,8 @@ export default function CapturePage() {
       URL.revokeObjectURL(url);
       setRecordedBlobUrl(null);
     };
+  // recordedBlobUrl is read only in the cleanup path when recordedBlob is cleared; including it in deps would re-run when we set it
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordedBlob]);
 
   const openCamera = useCallback(async () => {
@@ -376,47 +401,7 @@ export default function CapturePage() {
     }
   }, [currentShot, recordedBlob, recordedDuration, projectId, generateUploadUrl, saveToLibrary, isUploading]);
 
-  const handleReplaceAssigned = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      e.target.value = "";
-      if (!file || !selectedShot || !projectId || isReplacingAssigned) return;
-      setIsReplacingAssigned(true);
-      setError(null);
-      try {
-        const url = URL.createObjectURL(file);
-        const video = document.createElement("video");
-        video.preload = "metadata";
-        const duration = await new Promise<number>((resolve, reject) => {
-          video.onloadedmetadata = () => {
-            resolve(Number.isFinite(video.duration) ? video.duration : 0);
-            URL.revokeObjectURL(url);
-          };
-          video.onerror = () => reject(new Error("Could not read video"));
-          video.src = url;
-        });
-        const uploadUrl = await generateUploadUrl();
-        const contentType = file.type.split(";")[0].trim() || "video/mp4";
-        const result = await fetch(uploadUrl, {
-          method: "POST",
-          headers: { "Content-Type": contentType },
-          body: file,
-        });
-        if (!result.ok) {
-          const body = await result.text();
-          throw new Error(body ? `${result.status}: ${body}` : `Upload failed (${result.status})`);
-        }
-        const { storageId } = (await result.json()) as { storageId: Id<"_storage"> };
-        await linkScene({ shotId: selectedShot._id, storageId, duration: Math.round(duration) });
-        analyzeStrongMoments({ shotId: selectedShot._id }).catch(() => {});
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Replace failed.");
-      } finally {
-        setIsReplacingAssigned(false);
-      }
-    },
-    [selectedShot, projectId, generateUploadUrl, linkScene, analyzeStrongMoments, isReplacingAssigned]
-  );
+  const [replaceModalOpen, setReplaceModalOpen] = useState(false);
 
   const retake = useCallback(() => {
     setRecordedBlob(null);
@@ -697,47 +682,20 @@ export default function CapturePage() {
                   }}
                 />
               </div>
-              <p className="text-xs text-muted-foreground flex-shrink-0">Saved video</p>
               {assignedVideoInLibrary && (
                 <p className="text-xs text-primary font-medium flex-shrink-0">Saved to library</p>
               )}
-              <input
-                ref={replaceAssignedInputRef}
-                type="file"
-                accept="video/*"
-                className="hidden"
-                aria-label="Replace video"
-                onChange={handleReplaceAssigned}
-              />
               <div className="flex flex-wrap gap-2 w-full justify-center">
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={isReplacingAssigned}
-                  onClick={() => replaceAssignedInputRef.current?.click()}
+                  onClick={() => setReplaceModalOpen(true)}
                 >
-                  {isReplacingAssigned ? "Replacing…" : "Replace"}
+                  Replace
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={isReplacingAssigned}
-                  onClick={async () => {
-                    if (!selectedShot._id) return;
-                    try {
-                      await unassignShot({ shotId: selectedShot._id });
-                      await openCamera();
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : "Unassign failed.");
-                    }
-                  }}
-                >
-                  Retake
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isReplacingAssigned}
                   onClick={async () => {
                     if (!selectedShot._id) return;
                     try {
@@ -824,7 +782,7 @@ export default function CapturePage() {
                     size="sm"
                     onClick={() => setRevealedFeedbackShotId(selectedShot._id)}
                   >
-                    Show feedback
+                    Get AI Feedback
                   </Button>
                 ) : (
                   <p className="text-xs text-muted-foreground">
@@ -976,6 +934,18 @@ export default function CapturePage() {
           <Link href={`/project/${project._id}`}>Back to plan</Link>
         </Button>
       </div>
+
+      {selectedShot && (
+        <ReplaceVideoModal
+          open={replaceModalOpen}
+          onClose={() => setReplaceModalOpen(false)}
+          projectId={projectId}
+          shotId={selectedShot._id}
+          shots={(shots ?? []).map((s) => ({ _id: s._id, sceneStorageId: s.sceneStorageId }))}
+          linkScene={linkScene}
+          analyzeStrongMoments={analyzeStrongMoments}
+        />
+      )}
     </div>
   );
 }

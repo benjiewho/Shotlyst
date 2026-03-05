@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { Trash2, GripVertical } from "lucide-react";
+import { ReplaceVideoModal } from "@/components/replace-video-modal";
 import {
   DndContext,
   type DragEndEvent,
@@ -68,20 +69,18 @@ function SortableShotRow({
   projectId,
   updateShot,
   removeShot,
-  generateUploadUrl,
-  linkScene,
+  onOpenReplaceModal,
+  onUnassign,
 }: {
   shot: { _id: Id<"shots">; title: string; description: string; shotCategory?: string | null; purpose?: string | null; status?: string; sceneStorageId?: Id<"_storage"> | null };
   index: number;
   projectId: Id<"projects">;
   updateShot: (args: { shotId: Id<"shots">; title?: string; description?: string; shotCategory?: ShotCategoryValue }) => Promise<unknown>;
   removeShot: (args: { shotId: Id<"shots"> }) => Promise<unknown>;
-  generateUploadUrl: () => Promise<string>;
-  linkScene: (args: { shotId: Id<"shots">; storageId: Id<"_storage">; duration: number }) => Promise<unknown>;
+  onOpenReplaceModal: (shotId: Id<"shots">) => void;
+  onUnassign: (shotId: Id<"shots">) => void;
 }) {
-  const [isReplacing, setIsReplacing] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
-  const replaceInputRef = useRef<HTMLInputElement>(null);
   const {
     attributes,
     listeners,
@@ -179,60 +178,21 @@ function SortableShotRow({
           {shot.status === "captured" && shot.sceneStorageId && (
             <div className="flex items-center gap-2 flex-wrap">
               <SceneThumbnail storageId={shot.sceneStorageId} />
-              <input
-                ref={replaceInputRef}
-                type="file"
-                accept="video/*"
-                className="hidden"
-                aria-label="Replace video"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = "";
-                  if (!file || isReplacing) return;
-                  setIsReplacing(true);
-                  try {
-                    const url = URL.createObjectURL(file);
-                    const video = document.createElement("video");
-                    video.preload = "metadata";
-                    const duration = await new Promise<number>((resolve, reject) => {
-                      video.onloadedmetadata = () => {
-                        resolve(Number.isFinite(video.duration) ? video.duration : 0);
-                        URL.revokeObjectURL(url);
-                      };
-                      video.onerror = () => reject(new Error("Could not read video"));
-                      video.src = url;
-                    });
-                    const uploadUrl = await generateUploadUrl();
-                    const contentType = file.type.split(";")[0].trim() || "video/webm";
-                    const result = await fetch(uploadUrl, {
-                      method: "POST",
-                      headers: { "Content-Type": contentType },
-                      body: file,
-                    });
-                    if (!result.ok) {
-                      const body = await result.text();
-                      throw new Error(body ? `${result.status}: ${body}` : `Upload failed (${result.status})`);
-                    }
-                    const { storageId } = (await result.json()) as { storageId: Id<"_storage"> };
-                    await linkScene({ shotId: shot._id, storageId, duration: Math.round(duration) });
-                  } finally {
-                    setIsReplacing(false);
-                  }
-                }}
-              />
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={isReplacing}
-                onClick={() => replaceInputRef.current?.click()}
+                onClick={() => onOpenReplaceModal(shot._id)}
               >
-                {isReplacing ? "Replacing…" : "Replace"}
+                Replace
               </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/project/${projectId}/capture?shot=${shot._id}`}>
-                  Retake
-                </Link>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onUnassign(shot._id)}
+              >
+                Unassign
               </Button>
             </div>
           )}
@@ -284,9 +244,12 @@ export default function ProjectPlanPage() {
   const removeShot = useMutation(api.shots.remove);
   const createOneShot = useMutation(api.shots.createOne);
   const reorderShots = useMutation(api.shots.reorderShots);
-  const generateUploadUrl = useMutation(api.shots.generateUploadUrl);
   const linkScene = useMutation(api.shots.linkScene);
+  const unassignShot = useMutation(api.shots.unassignShot);
   const generatePlan = useAction(api.ai.generatePlan);
+  const analyzeStrongMoments = useAction(api.ai.analyzeVideoForStrongMoments);
+  const router = useRouter();
+  const [replaceModalShotId, setReplaceModalShotId] = useState<Id<"shots"> | null>(null);
   const regenerateHook = useAction(api.ai.regenerateHook);
   const regenerateStyle = useAction(api.ai.regenerateStyle);
 
@@ -580,8 +543,11 @@ export default function ProjectPlanPage() {
                         projectId={projectId!}
                         updateShot={updateShot}
                         removeShot={removeShot}
-                        generateUploadUrl={generateUploadUrl}
-                        linkScene={linkScene}
+                        onOpenReplaceModal={(id) => setReplaceModalShotId(id)}
+                        onUnassign={async (id) => {
+                          await unassignShot({ shotId: id });
+                          router.push(`/project/${projectId}/capture?shot=${id}`);
+                        }}
                       />
                     ))}
                   </ol>
@@ -601,6 +567,18 @@ export default function ProjectPlanPage() {
           <Link href={`/project/${project._id}/report`}>View report</Link>
         </Button>
       </div>
+
+      {replaceModalShotId && (
+        <ReplaceVideoModal
+          open={true}
+          onClose={() => setReplaceModalShotId(null)}
+          projectId={projectId!}
+          shotId={replaceModalShotId}
+          shots={(shots ?? []).map((s) => ({ _id: s._id, sceneStorageId: s.sceneStorageId }))}
+          linkScene={linkScene}
+          analyzeStrongMoments={analyzeStrongMoments}
+        />
+      )}
     </div>
   );
 }
