@@ -43,6 +43,7 @@ function MediaThumbnail({
   duration,
   isAssigned,
   onAssign,
+  onUnassign,
   onDelete,
   projectId,
   shotId,
@@ -52,6 +53,7 @@ function MediaThumbnail({
   duration: number;
   isAssigned: boolean;
   onAssign: () => void;
+  onUnassign?: () => void;
   onDelete: () => void;
   projectId: Id<"projects">;
   shotId: Id<"shots">;
@@ -107,6 +109,17 @@ function MediaThumbnail({
             Assign to Scene
           </Button>
         )}
+        {isAssigned && onUnassign && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            onClick={onUnassign}
+            disabled={disabled}
+          >
+            Unassign
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -146,6 +159,7 @@ function MediaThumbnail({
 export default function LibraryPage() {
   const library = useQuery(api.media.listLibrary);
   const linkScene = useMutation(api.shots.linkScene);
+  const unassignShot = useMutation(api.shots.unassignShot);
   const removeMedia = useMutation(api.media.remove);
   const [assigningMediaId, setAssigningMediaId] = useState<Id<"media"> | null>(null);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
@@ -248,6 +262,13 @@ export default function LibraryPage() {
                                   setAssigningMediaId(null);
                                 }
                               }}
+                              onUnassign={
+                                shot.assignedStorageId
+                                  ? async () => {
+                                      await unassignShot({ shotId: shot.shotId as Id<"shots"> });
+                                    }
+                                  : undefined
+                              }
                               onDelete={async () => {
                                 await removeMedia({ mediaId: m.mediaId as Id<"media"> });
                               }}

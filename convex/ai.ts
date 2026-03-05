@@ -278,6 +278,90 @@ export const analyzeVideoForStrongMoments = action({
   },
 });
 
+const SCENE_FEEDBACK_PROMPT = (goal: string, shotTitle: string, shotDescription: string) =>
+  `You are analyzing a short video clip for a content creator. The project goal is: "${goal}". This specific scene is titled "${shotTitle}" and should show: ${shotDescription}.
+
+Watch the video and return JSON only, no markdown, no explanation:
+{ "alignmentSummary": "string", "pros": ["string"], "cons": ["string"] }
+
+- alignmentSummary: 1–2 sentences on how well the video aligns with the project goal and this scene.
+- pros: 2–3 short positive points (phrases) about the video for this scene.
+- cons: 1–2 short areas for improvement (phrases).`;
+
+export const analyzeVideoSceneFeedback = action({
+  args: { shotId: v.id("shots") },
+  handler: async (ctx, args) => {
+    const shot = await ctx.runQuery(api.shots.getShot, { shotId: args.shotId });
+    if (!shot?.sceneStorageId) throw new Error("Shot has no video");
+    const project = await ctx.runQuery(api.projects.get, { id: shot.projectId });
+    if (!project) throw new Error("Project not found");
+    const videoUrl = await ctx.runQuery(api.shots.getSceneUrl, {
+      storageId: shot.sceneStorageId,
+    });
+    if (!videoUrl) throw new Error("Could not get video URL");
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      await ctx.runMutation(api.shots.setSceneFeedback, {
+        shotId: args.shotId,
+        sceneFeedback: {
+          alignmentSummary: "AI feedback unavailable (no API key configured).",
+          pros: [],
+          cons: [],
+        },
+      });
+      return { success: true };
+    }
+    const resp = await fetch(videoUrl);
+    if (!resp.ok) throw new Error(`Failed to fetch video: ${resp.status}`);
+    const buf = await resp.arrayBuffer();
+    const maxBytes = 20 * 1024 * 1024;
+    const bytes = buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf;
+    const base64 = Buffer.from(bytes).toString("base64");
+    const mimeType = (resp.headers.get("content-type") || "video/mp4").split(";")[0].trim();
+    const prompt = SCENE_FEEDBACK_PROMPT(
+      project.goalSummary,
+      shot.title,
+      shot.description
+    );
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: mimeType.startsWith("video/") ? mimeType : "video/mp4",
+          data: base64,
+        },
+      },
+      { text: prompt },
+    ]);
+    const text = result.response.text();
+    if (!text) throw new Error("Empty response from Gemini");
+    let jsonStr = text.trim();
+    const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlock) jsonStr = codeBlock[1].trim();
+    const parsed = JSON.parse(jsonStr) as {
+      alignmentSummary?: string;
+      pros?: string[];
+      cons?: string[];
+    };
+    const alignmentSummary =
+      typeof parsed.alignmentSummary === "string"
+        ? parsed.alignmentSummary
+        : "Analysis unavailable.";
+    const pros = Array.isArray(parsed.pros)
+      ? parsed.pros.filter((p): p is string => typeof p === "string").slice(0, 5)
+      : [];
+    const cons = Array.isArray(parsed.cons)
+      ? parsed.cons.filter((c): c is string => typeof c === "string").slice(0, 5)
+      : [];
+    await ctx.runMutation(api.shots.setSceneFeedback, {
+      shotId: args.shotId,
+      sceneFeedback: { alignmentSummary, pros, cons },
+    });
+    return { success: true };
+  },
+});
+
 function buildPlanContext(project: { goalSummary: string; suggestedHook: string; recommendedStyle: string; location: string; contentType: string; videoGoal: string; audience: string[] }, shots: { order: number; title: string; description: string; shotCategory?: string }[]): string {
   const shotLines = shots
     .sort((a, b) => a.order - b.order)

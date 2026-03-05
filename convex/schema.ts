@@ -103,6 +103,13 @@ export default defineSchema({
         })
       )
     ),
+    sceneFeedback: v.optional(
+      v.object({
+        alignmentSummary: v.string(),
+        pros: v.array(v.string()),
+        cons: v.array(v.string()),
+      })
+    ),
   })
     .index("by_project_id", ["projectId"])
     .index("by_scene_storage_id", ["sceneStorageId"]),

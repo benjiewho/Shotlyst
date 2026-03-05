@@ -59,10 +59,12 @@ export default function CapturePage() {
 
   const generateUploadUrl = useMutation(api.shots.generateUploadUrl);
   const linkScene = useMutation(api.shots.linkScene);
+  const unassignShot = useMutation(api.shots.unassignShot);
   const saveToLibrary = useMutation(api.media.saveToLibrary);
   const updateStatus = useMutation(api.shots.updateStatus);
   const updateShot = useMutation(api.shots.updateShot);
   const analyzeStrongMoments = useAction(api.ai.analyzeVideoForStrongMoments);
+  const analyzeVideoSceneFeedback = useAction(api.ai.analyzeVideoSceneFeedback);
 
   const [cameraOpen, setCameraOpen] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -80,6 +82,8 @@ export default function CapturePage() {
   const [previewAspect, setPreviewAspect] = useState<{ w: number; h: number } | null>(null);
   const [recordedBlobUrl, setRecordedBlobUrl] = useState<string | null>(null);
   const [savedToLibraryFeedback, setSavedToLibraryFeedback] = useState(false);
+  const [isReplacingAssigned, setIsReplacingAssigned] = useState(false);
+  const [analyzingFeedbackShotId, setAnalyzingFeedbackShotId] = useState<Id<"shots"> | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraWrapperRef = useRef<HTMLDivElement>(null);
@@ -88,6 +92,7 @@ export default function CapturePage() {
   const chunksRef = useRef<Blob[]>([]);
   const recordingStartRef = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const replaceAssignedInputRef = useRef<HTMLInputElement>(null);
   const hasSetInitialSelectionRef = useRef(false);
 
   const pendingShots = useMemo(
@@ -367,6 +372,48 @@ export default function CapturePage() {
     }
   }, [currentShot, recordedBlob, recordedDuration, projectId, generateUploadUrl, saveToLibrary, isUploading]);
 
+  const handleReplaceAssigned = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file || !selectedShot || !projectId || isReplacingAssigned) return;
+      setIsReplacingAssigned(true);
+      setError(null);
+      try {
+        const url = URL.createObjectURL(file);
+        const video = document.createElement("video");
+        video.preload = "metadata";
+        const duration = await new Promise<number>((resolve, reject) => {
+          video.onloadedmetadata = () => {
+            resolve(Number.isFinite(video.duration) ? video.duration : 0);
+            URL.revokeObjectURL(url);
+          };
+          video.onerror = () => reject(new Error("Could not read video"));
+          video.src = url;
+        });
+        const uploadUrl = await generateUploadUrl();
+        const contentType = file.type.split(";")[0].trim() || "video/mp4";
+        const result = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": contentType },
+          body: file,
+        });
+        if (!result.ok) {
+          const body = await result.text();
+          throw new Error(body ? `${result.status}: ${body}` : `Upload failed (${result.status})`);
+        }
+        const { storageId } = (await result.json()) as { storageId: Id<"_storage"> };
+        await linkScene({ shotId: selectedShot._id, storageId, duration: Math.round(duration) });
+        analyzeStrongMoments({ shotId: selectedShot._id }).catch(() => {});
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Replace failed.");
+      } finally {
+        setIsReplacingAssigned(false);
+      }
+    },
+    [selectedShot, projectId, generateUploadUrl, linkScene, analyzeStrongMoments, isReplacingAssigned]
+  );
+
   const retake = useCallback(() => {
     setRecordedBlob(null);
     setRecordedDuration(0);
@@ -629,7 +676,7 @@ export default function CapturePage() {
           ) : selectedShot?.status === "captured" &&
             selectedShot?.sceneStorageId &&
             sceneUrl ? (
-            <div className="flex flex-1 flex-col items-center gap-4 p-4 w-full min-h-0 min-w-0 overflow-y-auto">
+            <div className="flex flex-1 flex-col items-center gap-4 p-4 w-full min-h-0 min-w-0">
               <div className="w-full flex items-center justify-center flex-shrink-0" style={{ minHeight: "min(40vh, 280px)" }}>
                 <video
                   ref={reviewVideoRef}
@@ -648,6 +695,38 @@ export default function CapturePage() {
                 />
               </div>
               <p className="text-xs text-muted-foreground flex-shrink-0">Saved video</p>
+              <input
+                ref={replaceAssignedInputRef}
+                type="file"
+                accept="video/*"
+                className="hidden"
+                aria-label="Replace video"
+                onChange={handleReplaceAssigned}
+              />
+              <div className="flex flex-wrap gap-2 w-full justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isReplacingAssigned}
+                  onClick={() => replaceAssignedInputRef.current?.click()}
+                >
+                  {isReplacingAssigned ? "Replacing…" : "Replace"}
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/project/${projectId}/capture?shot=${selectedShot._id}`}>Retake</Link>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isReplacingAssigned}
+                  onClick={async () => {
+                    if (!selectedShot._id) return;
+                    await unassignShot({ shotId: selectedShot._id });
+                  }}
+                >
+                  Unassign
+                </Button>
+              </div>
               <div className="w-full space-y-2 flex-shrink-0 min-h-0">
                 <p className="text-sm font-medium text-foreground">Strong moments</p>
                 {selectedShot.strongMoments && selectedShot.strongMoments.length > 0 ? (
@@ -686,6 +765,54 @@ export default function CapturePage() {
                     }}
                   >
                     Find strong moments
+                  </Button>
+                )}
+              </div>
+              <div className="w-full space-y-2 flex-shrink-0 min-h-0">
+                <p className="text-sm font-medium text-foreground">Scene feedback</p>
+                {selectedShot.sceneFeedback ? (
+                  <div className="space-y-2 text-sm">
+                    <p className="text-muted-foreground">{selectedShot.sceneFeedback.alignmentSummary}</p>
+                    {selectedShot.sceneFeedback.pros.length > 0 && (
+                      <div>
+                        <p className="font-medium text-foreground mb-1">Pros</p>
+                        <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+                          {selectedShot.sceneFeedback.pros.map((p, i) => (
+                            <li key={i}>{p}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {selectedShot.sceneFeedback.cons.length > 0 && (
+                      <div>
+                        <p className="font-medium text-foreground mb-1">Cons</p>
+                        <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+                          {selectedShot.sceneFeedback.cons.map((c, i) => (
+                            <li key={i}>{c}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : analyzingFeedbackShotId === selectedShot._id ? (
+                  <p className="text-xs text-muted-foreground">Analyzing…</p>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={analyzingFeedbackShotId !== null}
+                    onClick={async () => {
+                      if (!selectedShot._id) return;
+                      setAnalyzingFeedbackShotId(selectedShot._id);
+                      try {
+                        await analyzeVideoSceneFeedback({ shotId: selectedShot._id });
+                      } finally {
+                        setAnalyzingFeedbackShotId(null);
+                      }
+                    }}
+                  >
+                    Get AI feedback
                   </Button>
                 )}
               </div>

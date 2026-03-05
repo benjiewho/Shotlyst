@@ -246,6 +246,26 @@ export const linkScene = mutation({
   },
 });
 
+export const unassignShot = mutation({
+  args: { shotId: v.id("shots") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const shot = await ctx.db.get(args.shotId);
+    if (!shot) throw new Error("Shot not found");
+    const project = await ctx.db.get(shot.projectId);
+    if (!project || project.userId !== userId) throw new Error("Unauthorized");
+    await ctx.db.patch(args.shotId, {
+      sceneStorageId: undefined,
+      sceneDuration: undefined,
+      strongMoments: undefined,
+      sceneFeedback: undefined,
+      status: "pending",
+    });
+    return args.shotId;
+  },
+});
+
 const strongMomentValidator = v.object({
   timestampSeconds: v.number(),
   reason: v.string(),
@@ -264,6 +284,29 @@ export const setStrongMoments = mutation({
     const project = await ctx.db.get(shot.projectId);
     if (!project || project.userId !== userId) throw new Error("Unauthorized");
     await ctx.db.patch(args.shotId, { strongMoments: args.strongMoments });
+    return args.shotId;
+  },
+});
+
+const sceneFeedbackValidator = v.object({
+  alignmentSummary: v.string(),
+  pros: v.array(v.string()),
+  cons: v.array(v.string()),
+});
+
+export const setSceneFeedback = mutation({
+  args: {
+    shotId: v.id("shots"),
+    sceneFeedback: sceneFeedbackValidator,
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const shot = await ctx.db.get(args.shotId);
+    if (!shot) throw new Error("Shot not found");
+    const project = await ctx.db.get(shot.projectId);
+    if (!project || project.userId !== userId) throw new Error("Unauthorized");
+    await ctx.db.patch(args.shotId, { sceneFeedback: args.sceneFeedback });
     return args.shotId;
   },
 });
