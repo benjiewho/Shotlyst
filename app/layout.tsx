@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { Analytics } from "@vercel/analytics/react";
 import { ConvexClientProvider } from "@/components/providers/convex-provider";
 import "./globals.css";
 
@@ -40,6 +41,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <ConvexClientProvider>{children}</ConvexClientProvider>
+        <Analytics />
       </body>
     </html>
   );

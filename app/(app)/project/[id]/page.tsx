@@ -108,22 +108,21 @@ function SortableShotRow({
       )}
     >
       {/* Top row: drag handle (center), delete (right) */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1 flex justify-center">
-          <button
-            type="button"
-            className="touch-none p-1.5 rounded cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground hover:bg-muted/80"
-            aria-label="Drag to reorder"
-            {...attributes}
-            {...listeners}
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
-        </div>
+      <div className="grid grid-cols-3 items-center">
+        <div />
+        <button
+          type="button"
+          className="col-start-2 justify-self-center touch-none p-1.5 rounded cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground hover:bg-muted/80"
+          aria-label="Drag to reorder"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+          className="col-start-3 justify-self-end h-8 w-8 text-muted-foreground hover:text-destructive"
           aria-label="Delete shot"
           onClick={async () => {
             await removeShot({ shotId: shot._id });
@@ -389,7 +388,7 @@ export default function ProjectPlanPage() {
 
       <div className="mb-4 rounded-lg bg-muted/60 border border-border px-3 py-2 text-xs text-muted-foreground flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <p><span className="font-medium text-foreground">Scene Generation By AI model:</span> {planSourceLabel}</p>
+          <p><span className="font-medium text-foreground">Scene Generation by AI model:</span> {planSourceLabel}</p>
           {planUpdatedAt && <p>Plan updated: {planUpdatedAt}</p>}
         </div>
         <div className="flex gap-2">

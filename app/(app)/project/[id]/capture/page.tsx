@@ -9,7 +9,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { Info } from "lucide-react";
+import { Info, Maximize2 } from "lucide-react";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -477,16 +477,16 @@ export default function CapturePage() {
       <Card className="mb-4 relative z-10">
         <CardContent className="p-4">
           <h2 className="text-sm font-medium text-foreground mb-3">Shot list</h2>
-          <div className="flex items-center justify-between text-sm mb-2">
-            <span className="text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-sm mb-2">
+            <span className="text-muted-foreground break-words min-w-0">
               {capturedCount} of {totalShots} shots captured
             </span>
             {allCaptured ? (
-              <span className="text-muted-foreground font-medium text-primary">
+              <span className="text-muted-foreground font-medium text-primary break-words min-w-0">
                 Project complete
               </span>
             ) : firstPendingByOrder ? (
-              <span className="text-muted-foreground truncate max-w-[50%]">
+              <span className="text-muted-foreground break-words min-w-0 max-w-full">
                 Next: {firstPendingByOrder.title}
               </span>
             ) : null}
@@ -547,7 +547,12 @@ export default function CapturePage() {
       <Card className="mb-6 overflow-hidden bg-muted/50">
         <CardContent
           className={cn(
-            "relative p-0 max-h-[70vh] flex flex-col items-center justify-center",
+            "relative p-0 flex flex-col items-center justify-center",
+            recordedBlob
+              ? "max-h-[85vh] overflow-y-auto"
+              : selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl
+                ? "max-h-[85vh] overflow-y-auto"
+                : "max-h-[70vh]",
             !cardAspect && "aspect-[9/16]"
           )}
           style={cardContentStyle}
@@ -618,13 +623,16 @@ export default function CapturePage() {
           ) : selectedShot?.status === "captured" &&
             selectedShot?.sceneStorageId &&
             sceneUrl ? (
-            <div className="flex flex-1 flex-col items-center gap-4 p-4 w-full min-h-0 min-w-0">
-              <div className="flex-1 min-h-0 w-full flex items-center justify-center">
+            <div className="flex flex-1 flex-col items-center gap-4 p-4 w-full min-h-0 min-w-0 overflow-y-auto">
+              <div className="w-full flex items-center justify-center flex-shrink-0" style={{ minHeight: "min(40vh, 280px)" }}>
                 <video
                   ref={reviewVideoRef}
                   src={sceneUrl}
                   controls
                   playsInline
+                  autoPlay
+                  loop
+                  muted
                   className="max-w-full max-h-full w-full h-full object-contain rounded-lg bg-black"
                   onLoadedMetadata={(e) => {
                     const v = e.currentTarget;
@@ -633,8 +641,8 @@ export default function CapturePage() {
                   }}
                 />
               </div>
-              <p className="text-xs text-muted-foreground">Saved video</p>
-              <div className="w-full space-y-2">
+              <p className="text-xs text-muted-foreground flex-shrink-0">Saved video</p>
+              <div className="w-full space-y-2 flex-shrink-0 min-h-0">
                 <p className="text-sm font-medium text-foreground">Strong moments</p>
                 {selectedShot.strongMoments && selectedShot.strongMoments.length > 0 ? (
                   <ul className="space-y-1.5 text-sm">
@@ -684,7 +692,7 @@ export default function CapturePage() {
             </p>
           ) : cameraOpen ? (
             <div className="flex flex-col flex-1 min-h-0 w-full">
-              <div className="flex-1 min-h-0 flex items-center justify-center bg-black/5 rounded-lg overflow-hidden">
+              <div className="flex-1 min-h-0 flex items-center justify-center bg-black/5 rounded-lg overflow-hidden relative">
                 <video
                   ref={videoRef}
                   autoPlay
@@ -697,6 +705,18 @@ export default function CapturePage() {
                       setStreamAspect({ w: v.videoWidth, h: v.videoHeight });
                   }}
                 />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  className="absolute top-2 right-2 h-9 w-9 rounded-lg bg-background/80 hover:bg-background shadow-md"
+                  aria-label="Fullscreen camera"
+                  onClick={() => {
+                    videoRef.current?.requestFullscreen?.().catch(() => {});
+                  }}
+                >
+                  <Maximize2 className="h-4 w-4" />
+                </Button>
               </div>
               <div className="flex justify-center gap-2 pt-4 pb-2">
                 {!recording ? (
@@ -719,7 +739,7 @@ export default function CapturePage() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center gap-4 p-6 min-h-[50vh] w-full">
+            <div className="flex flex-col items-center justify-start gap-4 p-6 w-full">
               <p className="text-sm text-muted-foreground text-center">
                 Open the camera to record this shot.
               </p>
