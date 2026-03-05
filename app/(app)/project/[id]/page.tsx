@@ -47,12 +47,12 @@ type EditField = "goal" | null;
 
 function SceneThumbnail({ storageId }: { storageId: Id<"_storage"> }) {
   const url = useQuery(api.shots.getSceneUrl, { storageId });
-  if (url === undefined) return <div className="w-16 h-16 rounded-lg bg-muted animate-pulse" />;
-  if (url === null) return <div className="w-16 h-16 rounded-lg bg-muted text-xs flex items-center justify-center text-muted-foreground">Unavailable</div>;
+  if (url === undefined) return <div className="aspect-video w-40 shrink-0 rounded-lg bg-muted animate-pulse" />;
+  if (url === null) return <div className="aspect-video w-40 shrink-0 rounded-lg bg-muted text-xs flex items-center justify-center text-muted-foreground">Unavailable</div>;
   return (
     <video
       src={url}
-      className="w-16 h-16 rounded-lg object-cover bg-muted"
+      className="aspect-video w-40 shrink-0 rounded-lg object-cover bg-muted"
       muted
       playsInline
       autoPlay
