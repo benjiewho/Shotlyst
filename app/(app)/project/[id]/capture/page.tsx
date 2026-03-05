@@ -82,6 +82,7 @@ export default function CapturePage() {
   const [savedToLibraryFeedback, setSavedToLibraryFeedback] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraWrapperRef = useRef<HTMLDivElement>(null);
   const reviewVideoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -104,7 +105,12 @@ export default function CapturePage() {
   const capturedCount = shots?.filter((s) => s.status === "captured").length ?? 0;
   const totalShots = shots?.length ?? 0;
   const allCaptured = totalShots > 0 && capturedCount === totalShots;
-  const firstPendingByOrder = pendingShots[0] ?? null;
+  const nextPendingAfterSelected = useMemo(() => {
+    if (!shots?.length) return null;
+    const sorted = [...shots].sort((a, b) => a.order - b.order);
+    if (!selectedShot) return sorted.find((s) => s.status !== "captured") ?? null;
+    return sorted.find((s) => s.order > selectedShot.order && s.status !== "captured") ?? null;
+  }, [shots, selectedShot]);
 
   const isPreviewMode = !!(
     recordedBlob ||
@@ -449,9 +455,9 @@ export default function CapturePage() {
               type="button"
               onClick={() => setShowExplanation((v) => !v)}
               aria-label="Show shot type tips"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground text-left underline decoration-dashed underline-offset-2 hover:no-underline"
+              className="inline-flex flex-wrap items-center gap-1.5 text-sm font-medium text-foreground text-left underline decoration-dashed underline-offset-2 hover:no-underline"
             >
-              <span className="truncate">Scene {currentShot.order + 1}: {currentShot.title}</span>
+              <span className="break-words min-w-0">Scene {currentShot.order + 1}: {currentShot.title}</span>
               <Info className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
             </button>
             {showExplanation && (
@@ -485,19 +491,19 @@ export default function CapturePage() {
               <span className="text-muted-foreground font-medium text-primary break-words min-w-0">
                 Project complete
               </span>
-            ) : firstPendingByOrder ? (
+            ) : nextPendingAfterSelected ? (
               <span className="text-muted-foreground break-words min-w-0 max-w-full">
-                Next: {firstPendingByOrder.title}
+                Next: {nextPendingAfterSelected.title}
               </span>
             ) : null}
           </div>
           <p className="text-xs text-muted-foreground mb-2">Tap a shot to capture or upload for it.</p>
-          <ul className="list-none space-y-2 max-h-48 overflow-y-auto [touch-action:manipulation] px-3 sm:px-4 py-3">            {shots.map((shot) => (
+          <ul className="list-none space-y-2 max-h-48 overflow-y-auto touch-pan-y px-3 sm:px-4 py-3">
+            {shots.map((shot) => (
               <li key={shot._id} className="list-none px-3 sm:px-4">
                 <button
                   type="button"
                   onClick={() => setSelectedShotId(shot._id)}
-                  onPointerDown={() => setSelectedShotId(shot._id)}
                   className={cn(
                     "w-full flex items-center gap-2 text-sm min-h-11 py-2 px-3 rounded-xl text-left transition-colors cursor-pointer border border-input bg-card text-foreground",
                     shot.status === "captured" && "bg-green-100 dark:bg-green-900/30 border-green-200 dark:border-green-800",
@@ -524,7 +530,7 @@ export default function CapturePage() {
                   >
                     {shot.order + 1}
                   </span>
-                  <span className="truncate min-w-0 flex-1">{shot.title}</span>
+                  <span className="break-words min-w-0 flex-1">{shot.title}</span>
                   {shot.status === "captured" && (
                     <>
                       <span className="text-primary shrink-0" aria-hidden>✓</span>
@@ -553,13 +559,13 @@ export default function CapturePage() {
               : selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl
                 ? "max-h-[85vh] overflow-y-auto"
                 : "max-h-[70vh]",
-            !cardAspect && "aspect-[9/16]"
+            !cardAspect && (recordedBlob || (selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl) || cameraOpen) && "aspect-[9/16]"
           )}
           style={cardContentStyle}
         >
           {recordedBlob ? (
             <div className="flex flex-1 flex-col items-center gap-4 p-4 w-full min-h-0 min-w-0">
-              <div className="flex-1 w-full flex items-center justify-center" style={{ minHeight: "max(40vh, 280px)" }}>
+              <div className="w-full flex items-center justify-center flex-shrink-0 max-h-[50vh] min-h-[200px]">
                 {recordedBlobUrl && (
                   <video
                     key={recordedBlobUrl}
@@ -591,17 +597,17 @@ export default function CapturePage() {
                   </p>
                 </div>
               )}
-              <div className="flex gap-2 w-full flex-wrap">
+              <div className="flex flex-col sm:flex-row gap-2 w-full flex-wrap">
                 <Button
                   variant="outline"
-                  className="flex-1 min-h-11 min-w-0"
+                  className="flex-1 min-h-11 min-w-0 text-sm whitespace-normal break-words"
                   onClick={retake}
                   disabled={isUploading}
                 >
                   Retake
                 </Button>
                 <Button
-                  className="flex-1 min-h-11 min-w-0"
+                  className="flex-1 min-h-11 min-w-0 text-sm whitespace-normal break-words"
                   onClick={confirmCapture}
                   disabled={isUploading}
                 >
@@ -609,7 +615,7 @@ export default function CapturePage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="flex-1 min-h-11 min-w-0 text-sm px-2"
+                  className="flex-1 min-h-11 min-w-0 text-sm whitespace-normal break-words px-2"
                   onClick={saveToLibraryOnly}
                   disabled={isUploading}
                 >
@@ -692,7 +698,10 @@ export default function CapturePage() {
             </p>
           ) : cameraOpen ? (
             <div className="flex flex-col flex-1 min-h-0 w-full">
-              <div className="flex-1 min-h-0 flex items-center justify-center bg-black/5 rounded-lg overflow-hidden relative">
+              <div
+                ref={cameraWrapperRef}
+                className="flex-1 min-h-0 flex items-center justify-center bg-black/5 rounded-lg overflow-hidden relative w-full"
+              >
                 <video
                   ref={videoRef}
                   autoPlay
@@ -712,7 +721,7 @@ export default function CapturePage() {
                   className="absolute top-2 right-2 h-9 w-9 rounded-lg bg-background/80 hover:bg-background shadow-md"
                   aria-label="Fullscreen camera"
                   onClick={() => {
-                    videoRef.current?.requestFullscreen?.().catch(() => {});
+                    cameraWrapperRef.current?.requestFullscreen?.().catch(() => {});
                   }}
                 >
                   <Maximize2 className="h-4 w-4" />
@@ -730,7 +739,7 @@ export default function CapturePage() {
                 ) : (
                   <Button
                     size="lg"
-                    className="min-h-12 rounded-full w-14 h-14 bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg ring-2 ring-background/80"
+                    className="min-h-12 rounded-full w-14 h-14 bg-red-600 text-white hover:bg-red-700 shadow-lg ring-2 ring-background/80 animate-pulse"
                     onClick={stopRecording}
                   >
                     Stop
@@ -789,9 +798,8 @@ export default function CapturePage() {
             Skip shot
           </Button>
           <Button
-            variant="ghost"
-            size="sm"
-            className="min-h-11"
+            variant="outline"
+            className="flex-1 min-h-11"
             onClick={closeCamera}
           >
             Close camera
