@@ -80,7 +80,6 @@ export default function CapturePage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
-  const [analyzingShotId, setAnalyzingShotId] = useState<Id<"shots"> | null>(null);
   const [previewAspect, setPreviewAspect] = useState<{ w: number; h: number } | null>(null);
   const [recordedBlobUrl, setRecordedBlobUrl] = useState<string | null>(null);
   const [savedToLibraryFeedback, setSavedToLibraryFeedback] = useState(false);
@@ -90,6 +89,7 @@ export default function CapturePage() {
   const hasSetInitialSelectionRef = useRef(false);
   const prevSelectedShotIdRef = useRef<Id<"shots"> | null>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement>(null);
+  const analysisTriggeredForShotsRef = useRef<Set<Id<"shots">>>(new Set());
 
   const pendingShots = useMemo(
     () => shots?.filter((s) => s.status === "pending") ?? [],
@@ -161,6 +161,22 @@ export default function CapturePage() {
       }
     }
   }, [selectedShotId, recordedBlobUrl]);
+
+  useEffect(() => {
+    if (!selectedShot) return;
+    if (!selectedShot.sceneStorageId) {
+      analysisTriggeredForShotsRef.current.delete(selectedShot._id);
+      return;
+    }
+    const hasNoStrongMoments =
+      !selectedShot.strongMoments || selectedShot.strongMoments.length === 0;
+    if (!hasNoStrongMoments) return;
+    if (analysisTriggeredForShotsRef.current.has(selectedShot._id)) return;
+    analysisTriggeredForShotsRef.current.add(selectedShot._id);
+    analyzeStrongMoments({ shotId: selectedShot._id }).catch(() => {});
+    // Intentionally depend on specific fields to avoid duplicate triggers
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedShot?._id, selectedShot?.sceneStorageId, selectedShot?.strongMoments, analyzeStrongMoments]);
 
   useEffect(() => {
     if (!recordedBlob && !(selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl)) {
@@ -500,16 +516,19 @@ export default function CapturePage() {
         <CardContent
           className={cn(
             "relative p-0 flex flex-col items-center justify-center",
-            recordedBlob ||
-            (selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl)
-              ? ""
-              : "max-h-[70vh]"
+            recordedBlob
+              ? "max-h-[85vh] overflow-y-auto"
+              : selectedShot?.status === "captured" &&
+                  selectedShot?.sceneStorageId &&
+                  sceneUrl
+                ? ""
+                : "max-h-[70vh]"
           )}
           style={cardContentStyle}
         >
           {recordedBlob ? (
             <div className="flex flex-1 flex-col items-center gap-4 p-4 w-full min-h-0 min-w-0">
-              <div className="w-full flex items-center justify-center flex-shrink-0 max-h-[50vh] min-h-[200px]">
+              <div className="w-full flex items-center justify-center flex-shrink-0 min-h-0 max-h-[45vh] min-h-[160px] overflow-hidden rounded-lg">
                 {recordedBlobUrl && (
                   <video
                     key={recordedBlobUrl}
@@ -541,7 +560,7 @@ export default function CapturePage() {
                   </p>
                 </div>
               )}
-              <div className="flex flex-col sm:flex-row gap-2 w-full flex-wrap">
+              <div className="flex flex-col sm:flex-row gap-2 w-full flex-wrap flex-shrink-0">
                 <Button
                   variant="outline"
                   className="flex-1 min-h-11 min-w-0 text-sm whitespace-normal break-words"
@@ -636,27 +655,9 @@ export default function CapturePage() {
                       </li>
                     ))}
                   </ul>
-                ) : analyzingShotId === selectedShot._id ? (
+                ) : selectedShot.sceneStorageId ? (
                   <p className="text-xs text-muted-foreground">Analyzing…</p>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={analyzingShotId !== null}
-                    onClick={async () => {
-                      if (!selectedShot._id) return;
-                      setAnalyzingShotId(selectedShot._id);
-                      try {
-                        await analyzeStrongMoments({ shotId: selectedShot._id });
-                      } finally {
-                        setAnalyzingShotId(null);
-                      }
-                    }}
-                  >
-                    Find strong moments
-                  </Button>
-                )}
+                ) : null}
               </div>
               <div className="w-full space-y-2 flex-shrink-0 min-h-0">
                 <p className="text-sm font-medium text-foreground">Scene feedback</p>
@@ -693,6 +694,8 @@ export default function CapturePage() {
                   >
                     Get AI Feedback
                   </Button>
+                ) : selectedShot.sceneStorageId ? (
+                  <p className="text-xs text-muted-foreground">Analyzing…</p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     Run analysis above to see alignment and feedback.

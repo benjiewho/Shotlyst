@@ -241,6 +241,8 @@ export const linkScene = mutation({
       sceneStorageId: args.storageId,
       sceneDuration: args.duration,
       status: "captured",
+      strongMoments: undefined,
+      sceneFeedback: undefined,
     });
     return args.shotId;
   },

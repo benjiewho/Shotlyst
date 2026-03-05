@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -199,6 +199,7 @@ function MediaThumbnail({
 export default function LibraryPage() {
   const library = useQuery(api.media.listLibrary);
   const linkScene = useMutation(api.shots.linkScene);
+  const analyzeStrongMoments = useAction(api.ai.analyzeVideoForStrongMoments);
   const unassignShot = useMutation(api.shots.unassignShot);
   const removeMedia = useMutation(api.media.remove);
   const [assigningMediaId, setAssigningMediaId] = useState<Id<"media"> | null>(null);
@@ -295,6 +296,7 @@ export default function LibraryPage() {
                                     storageId: m.storageId as Id<"_storage">,
                                     duration: m.duration,
                                   });
+                                  analyzeStrongMoments({ shotId: shot.shotId as Id<"shots"> }).catch(() => {});
                                 } finally {
                                   setAssigningMediaId(null);
                                 }
