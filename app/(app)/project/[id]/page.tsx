@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -70,7 +70,6 @@ function SortableShotRow({
   updateShot,
   removeShot,
   onOpenReplaceModal,
-  onUnassign,
 }: {
   shot: { _id: Id<"shots">; title: string; description: string; shotCategory?: string | null; purpose?: string | null; status?: string; sceneStorageId?: Id<"_storage"> | null };
   index: number;
@@ -78,7 +77,6 @@ function SortableShotRow({
   updateShot: (args: { shotId: Id<"shots">; title?: string; description?: string; shotCategory?: ShotCategoryValue }) => Promise<unknown>;
   removeShot: (args: { shotId: Id<"shots"> }) => Promise<unknown>;
   onOpenReplaceModal: (shotId: Id<"shots">) => void;
-  onUnassign: (shotId: Id<"shots">) => void;
 }) {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const {
@@ -186,14 +184,6 @@ function SortableShotRow({
               >
                 Replace
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => onUnassign(shot._id)}
-              >
-                Unassign
-              </Button>
             </div>
           )}
           <div>
@@ -245,10 +235,8 @@ export default function ProjectPlanPage() {
   const createOneShot = useMutation(api.shots.createOne);
   const reorderShots = useMutation(api.shots.reorderShots);
   const linkScene = useMutation(api.shots.linkScene);
-  const unassignShot = useMutation(api.shots.unassignShot);
   const generatePlan = useAction(api.ai.generatePlan);
   const analyzeStrongMoments = useAction(api.ai.analyzeVideoForStrongMoments);
-  const router = useRouter();
   const [replaceModalShotId, setReplaceModalShotId] = useState<Id<"shots"> | null>(null);
   const regenerateHook = useAction(api.ai.regenerateHook);
   const regenerateStyle = useAction(api.ai.regenerateStyle);
@@ -544,10 +532,6 @@ export default function ProjectPlanPage() {
                         updateShot={updateShot}
                         removeShot={removeShot}
                         onOpenReplaceModal={(id) => setReplaceModalShotId(id)}
-                        onUnassign={async (id) => {
-                          await unassignShot({ shotId: id });
-                          router.push(`/project/${projectId}/capture?shot=${id}`);
-                        }}
                       />
                     ))}
                   </ol>

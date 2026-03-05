@@ -75,7 +75,6 @@ export default function CapturePage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [skipFeedback, setSkipFeedback] = useState<string | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
   const [analyzingShotId, setAnalyzingShotId] = useState<Id<"shots"> | null>(null);
   const [streamAspect, setStreamAspect] = useState<{ w: number; h: number } | null>(null);
@@ -90,7 +89,6 @@ export default function CapturePage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordingStartRef = useRef<number>(0);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const hasSetInitialSelectionRef = useRef(false);
   const prevSelectedShotIdRef = useRef<Id<"shots"> | null>(null);
 
@@ -105,6 +103,14 @@ export default function CapturePage() {
     selectedShot?.status === "captured" && selectedShot?.sceneStorageId
       ? { storageId: selectedShot.sceneStorageId }
       : "skip"
+  );
+  const projectMedia = useQuery(
+    api.media.listByProject,
+    projectId ? { projectId } : "skip"
+  );
+  const shotIdsWithLibraryMedia = useMemo(
+    () => new Set((projectMedia ?? []).map((m) => m.shotId)),
+    [projectMedia]
   );
   const mediaForShot = useQuery(
     api.media.listByShot,
@@ -409,49 +415,6 @@ export default function CapturePage() {
     setPreviewAspect(null);
   }, []);
 
-  const handleGallerySelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      e.target.value = "";
-      if (!file) return;
-      setError(null);
-      const url = URL.createObjectURL(file);
-      const video = document.createElement("video");
-      video.preload = "metadata";
-      video.onloadedmetadata = () => {
-        const duration = Number.isFinite(video.duration) ? video.duration : 0;
-        setRecordedBlob(file);
-        setRecordedDuration(duration);
-        URL.revokeObjectURL(url);
-      };
-      video.onerror = () => {
-        setError("Could not read video.");
-        URL.revokeObjectURL(url);
-      };
-      video.src = url;
-    },
-    []
-  );
-
-  const skipShot = useCallback(async () => {
-    if (!currentShot) return;
-    setError(null);
-    setSkipFeedback(null);
-    try {
-      await updateStatus({ shotId: currentShot._id, status: "skipped" });
-      const remaining = pendingShots.filter((s) => s._id !== currentShot._id);
-      const nextShot = remaining.length > 0 ? remaining[0] : null;
-      setSelectedShotId(nextShot?._id ?? null);
-      setRecordedBlob(null);
-      if (nextShot) {
-        setSkipFeedback(`Skipped — now on: ${nextShot.title}`);
-        setTimeout(() => setSkipFeedback(null), 3000);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not skip.");
-    }
-  }, [currentShot, updateStatus, pendingShots]);
-
   if (!projectId) {
     return (
       <div className="p-4">
@@ -505,12 +468,6 @@ export default function CapturePage() {
         )}
       </div>
 
-      {skipFeedback && (
-        <p className="mb-4 text-sm text-primary font-medium rounded-lg bg-primary/10 px-3 py-2">
-          {skipFeedback}
-        </p>
-      )}
-
       {error && (
         <p className="mb-4 text-sm text-destructive">{error}</p>
       )}
@@ -535,7 +492,9 @@ export default function CapturePage() {
           </div>
           <p className="text-xs text-muted-foreground mb-2">Tap a shot to capture or upload for it.</p>
           <ul className="list-none space-y-2 max-h-48 overflow-y-auto touch-pan-y px-3 sm:px-4 py-3">
-            {shots.map((shot) => (
+            {shots.map((shot) => {
+              const savedNotAssigned = shot.status !== "captured" && shotIdsWithLibraryMedia.has(shot._id);
+              return (
               <li key={shot._id} className="list-none px-3 sm:px-4">
                 <button
                   type="button"
@@ -543,11 +502,14 @@ export default function CapturePage() {
                   className={cn(
                     "w-full flex items-center gap-2 text-sm min-h-11 py-2 px-3 rounded-xl text-left transition-colors cursor-pointer border border-input bg-card text-foreground",
                     shot.status === "captured" && "bg-green-100 dark:bg-green-900/30 border-green-200 dark:border-green-800",
-                    shot.status === "pending" && "bg-primary/10 dark:bg-primary/20",
+                    savedNotAssigned && "bg-yellow-100 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800",
+                    shot.status === "pending" && !savedNotAssigned && "bg-primary/10 dark:bg-primary/20",
                     shot.status === "skipped" && "opacity-60 text-muted-foreground",
                     selectedShotId === shot._id && shot.status === "captured" &&
                       "ring-2 ring-green-600 dark:ring-green-500 ring-offset-2 font-medium border-2 border-green-600 dark:border-green-500 bg-green-200/80 dark:bg-green-800/40",
-                    selectedShotId === shot._id && shot.status !== "captured" &&
+                    selectedShotId === shot._id && savedNotAssigned &&
+                      "ring-2 ring-yellow-600 dark:ring-yellow-500 ring-offset-2 font-medium border-2 border-yellow-600 dark:border-yellow-500 bg-yellow-200/80 dark:bg-yellow-800/40",
+                    selectedShotId === shot._id && shot.status !== "captured" && !savedNotAssigned &&
                       "ring-2 ring-primary ring-offset-2 font-medium bg-primary/25 border-primary/50",
                     "hover:bg-muted/80"
                   )}
@@ -556,11 +518,14 @@ export default function CapturePage() {
                     className={cn(
                       "h-7 w-7 shrink-0 rounded-full flex items-center justify-center text-xs font-medium",
                       shot.status === "captured" && "bg-green-200 dark:bg-green-800 text-green-900 dark:text-green-100",
+                      savedNotAssigned && "bg-yellow-200 dark:bg-yellow-800 text-yellow-900 dark:text-yellow-100",
                       shot.status === "skipped" && "bg-muted text-muted-foreground",
-                      shot.status === "pending" && "bg-primary text-primary-foreground",
+                      shot.status === "pending" && !savedNotAssigned && "bg-primary text-primary-foreground",
                       selectedShotId === shot._id && shot.status === "captured" &&
                         "ring-2 ring-green-600 dark:ring-green-500 ring-offset-1 ring-offset-background",
-                      selectedShotId === shot._id && shot.status !== "captured" &&
+                      selectedShotId === shot._id && savedNotAssigned &&
+                        "ring-2 ring-yellow-600 dark:ring-yellow-500 ring-offset-1 ring-offset-background",
+                      selectedShotId === shot._id && shot.status !== "captured" && !savedNotAssigned &&
                         "ring-2 ring-primary ring-offset-1 ring-offset-background"
                     )}
                   >
@@ -580,7 +545,8 @@ export default function CapturePage() {
                   {shot.status === "skipped" && <span className="shrink-0" aria-hidden>−</span>}
                 </button>
               </li>
-            ))}
+            );
+            })}
           </ul>
         </CardContent>
       </Card>
@@ -853,14 +819,6 @@ export default function CapturePage() {
               <p className="text-sm text-muted-foreground text-center">
                 Open the camera to record this shot.
               </p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="video/*"
-                className="hidden"
-                aria-label="Choose video from gallery"
-                onChange={handleGallerySelect}
-              />
               <div className="flex flex-col gap-2 w-full max-w-xs">
                 <Button
                   type="button"
@@ -876,7 +834,7 @@ export default function CapturePage() {
                   variant="outline"
                   size="lg"
                   className="min-h-12"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => setReplaceModalOpen(true)}
                   disabled={!currentShot}
                   aria-label="Choose video from gallery"
                 >
@@ -890,14 +848,6 @@ export default function CapturePage() {
 
       {cameraOpen && !recordedBlob && currentShot && (
         <div className="flex gap-2 mb-4">
-          <Button
-            variant="outline"
-            className="flex-1 min-h-11"
-            onClick={skipShot}
-            disabled={recording}
-          >
-            Skip shot
-          </Button>
           <Button
             variant="outline"
             className="flex-1 min-h-11"
