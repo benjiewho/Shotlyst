@@ -115,12 +115,8 @@ export default function CapturePage() {
     return sorted.find((s) => s.order > selectedShot.order && s.status !== "captured") ?? null;
   }, [shots, selectedShot]);
 
-  const isPreviewMode = !!(
-    recordedBlob ||
-    (selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl)
-  );
   const cardAspect =
-    isPreviewMode ? previewAspect : cameraOpen ? streamAspect : null;
+    recordedBlob ? previewAspect : cameraOpen ? streamAspect : null;
   const cardContentStyle = cardAspect
     ? { aspectRatio: cardAspect.w / cardAspect.h }
     : undefined;
@@ -604,7 +600,7 @@ export default function CapturePage() {
               : selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl
                 ? ""
                 : "max-h-[70vh]",
-            !cardAspect && (recordedBlob || (selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl) || cameraOpen) && "aspect-[9/16]"
+            !cardAspect && (recordedBlob || cameraOpen) && "aspect-[9/16]"
           )}
           style={cardContentStyle}
         >
