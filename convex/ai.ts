@@ -235,94 +235,113 @@ Return JSON in this exact shape:
 export const analyzeVideoForStrongMoments = action({
   args: { shotId: v.id("shots") },
   handler: async (ctx, args) => {
-    const shot = await ctx.runQuery(api.shots.getShot, { shotId: args.shotId });
-    if (!shot?.sceneStorageId) throw new Error("Shot has no video");
-    const project = await ctx.runQuery(api.projects.get, { id: shot.projectId });
-    if (!project) throw new Error("Project not found");
-    const videoUrl = await ctx.runQuery(api.shots.getSceneUrl, {
-      storageId: shot.sceneStorageId,
-    });
-    if (!videoUrl) throw new Error("Could not get video URL");
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    try {
+      const shot = await ctx.runQuery(api.shots.getShot, { shotId: args.shotId });
+      if (!shot?.sceneStorageId) throw new Error("Shot has no video");
+      const project = await ctx.runQuery(api.projects.get, { id: shot.projectId });
+      if (!project) throw new Error("Project not found");
+      const videoUrl = await ctx.runQuery(api.shots.getSceneUrl, {
+        storageId: shot.sceneStorageId,
+      });
+      if (!videoUrl) throw new Error("Could not get video URL");
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        await ctx.runMutation(api.shots.setStrongMoments, {
+          shotId: args.shotId,
+          strongMoments: [
+            { timestampSeconds: 0, reason: "Analysis unavailable (no API key)" },
+          ],
+        });
+        await ctx.runMutation(api.shots.setSceneFeedback, {
+          shotId: args.shotId,
+          sceneFeedback: {
+            alignmentSummary: "AI feedback unavailable (no API key configured).",
+            pros: [],
+            cons: [],
+          },
+        });
+        return { success: true };
+      }
+      const resp = await fetch(videoUrl);
+      if (!resp.ok) throw new Error(`Failed to fetch video: ${resp.status}`);
+      const buf = await resp.arrayBuffer();
+      const maxBytes = 20 * 1024 * 1024;
+      const bytes = buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf;
+      const base64 = Buffer.from(bytes).toString("base64");
+      const mimeType = (resp.headers.get("content-type") || "video/mp4").split(";")[0].trim();
+      const prompt = buildCombinedAnalysisPrompt(
+        project.goalSummary,
+        shot.title,
+        shot.description
+      );
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+      const result = await model.generateContent([
+        {
+          inlineData: {
+            mimeType: mimeType.startsWith("video/") ? mimeType : "video/mp4",
+            data: base64,
+          },
+        },
+        { text: prompt },
+      ]);
+      const text = result.response.text();
+      if (!text) throw new Error("Empty response from Gemini");
+      let jsonStr = text.trim();
+      const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlock) jsonStr = codeBlock[1].trim();
+      const parsed = JSON.parse(jsonStr) as {
+        strongMoments?: { timestampSeconds?: number; reason?: string }[];
+        sceneFeedback?: {
+          alignmentSummary?: string;
+          pros?: string[];
+          cons?: string[];
+        };
+      };
+      const list = Array.isArray(parsed.strongMoments)
+        ? parsed.strongMoments
+            .filter(
+              (m): m is { timestampSeconds: number; reason: string } =>
+                typeof m?.timestampSeconds === "number" && typeof m?.reason === "string"
+            )
+            .slice(0, 10)
+        : [];
+      await ctx.runMutation(api.shots.setStrongMoments, {
+        shotId: args.shotId,
+        strongMoments: list,
+      });
+      const sf = parsed.sceneFeedback;
+      const alignmentSummary =
+        typeof sf?.alignmentSummary === "string" ? sf.alignmentSummary : "Analysis unavailable.";
+      const pros = Array.isArray(sf?.pros)
+        ? sf.pros.filter((p): p is string => typeof p === "string").slice(0, 5)
+        : [];
+      const cons = Array.isArray(sf?.cons)
+        ? sf.cons.filter((c): c is string => typeof c === "string").slice(0, 5)
+        : [];
+      await ctx.runMutation(api.shots.setSceneFeedback, {
+        shotId: args.shotId,
+        sceneFeedback: { alignmentSummary, pros, cons },
+      });
+      return { success: true };
+    } catch (err) {
+      console.error("[analyzeVideoForStrongMoments]", err);
       await ctx.runMutation(api.shots.setStrongMoments, {
         shotId: args.shotId,
         strongMoments: [
-          { timestampSeconds: 0, reason: "Analysis unavailable (no API key)" },
+          { timestampSeconds: 0, reason: "Analysis failed or unavailable." },
         ],
       });
       await ctx.runMutation(api.shots.setSceneFeedback, {
         shotId: args.shotId,
         sceneFeedback: {
-          alignmentSummary: "AI feedback unavailable (no API key configured).",
+          alignmentSummary: "Analysis failed or unavailable.",
           pros: [],
           cons: [],
         },
       });
-      return { success: true };
+      throw err;
     }
-    const resp = await fetch(videoUrl);
-    if (!resp.ok) throw new Error(`Failed to fetch video: ${resp.status}`);
-    const buf = await resp.arrayBuffer();
-    const maxBytes = 20 * 1024 * 1024;
-    const bytes = buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf;
-    const base64 = Buffer.from(bytes).toString("base64");
-    const mimeType = (resp.headers.get("content-type") || "video/mp4").split(";")[0].trim();
-    const prompt = buildCombinedAnalysisPrompt(
-      project.goalSummary,
-      shot.title,
-      shot.description
-    );
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: mimeType.startsWith("video/") ? mimeType : "video/mp4",
-          data: base64,
-        },
-      },
-      { text: prompt },
-    ]);
-    const text = result.response.text();
-    if (!text) throw new Error("Empty response from Gemini");
-    let jsonStr = text.trim();
-    const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeBlock) jsonStr = codeBlock[1].trim();
-    const parsed = JSON.parse(jsonStr) as {
-      strongMoments?: { timestampSeconds?: number; reason?: string }[];
-      sceneFeedback?: {
-        alignmentSummary?: string;
-        pros?: string[];
-        cons?: string[];
-      };
-    };
-    const list = Array.isArray(parsed.strongMoments)
-      ? parsed.strongMoments
-          .filter(
-            (m): m is { timestampSeconds: number; reason: string } =>
-              typeof m?.timestampSeconds === "number" && typeof m?.reason === "string"
-          )
-          .slice(0, 10)
-      : [];
-    await ctx.runMutation(api.shots.setStrongMoments, {
-      shotId: args.shotId,
-      strongMoments: list,
-    });
-    const sf = parsed.sceneFeedback;
-    const alignmentSummary =
-      typeof sf?.alignmentSummary === "string" ? sf.alignmentSummary : "Analysis unavailable.";
-    const pros = Array.isArray(sf?.pros)
-      ? sf.pros.filter((p): p is string => typeof p === "string").slice(0, 5)
-      : [];
-    const cons = Array.isArray(sf?.cons)
-      ? sf.cons.filter((c): c is string => typeof c === "string").slice(0, 5)
-      : [];
-    await ctx.runMutation(api.shots.setSceneFeedback, {
-      shotId: args.shotId,
-      sceneFeedback: { alignmentSummary, pros, cons },
-    });
-    return { success: true };
   },
 });
 

@@ -660,7 +660,7 @@ export default function CapturePage() {
                 ) : null}
               </div>
               <div className="w-full space-y-2 flex-shrink-0 min-h-0">
-                <p className="text-sm font-medium text-foreground">Scene feedback</p>
+                <p className="text-sm font-medium text-foreground">Video Scene feedback</p>
                 {revealedFeedbackShotId === selectedShot._id && selectedShot.sceneFeedback ? (
                   <div className="space-y-2 text-sm">
                     <p className="text-muted-foreground">{selectedShot.sceneFeedback.alignmentSummary}</p>
