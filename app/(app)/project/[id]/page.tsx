@@ -435,7 +435,7 @@ export default function ProjectPlanPage() {
                 }
               }}
             >
-              {regeneratingHook ? "Regenerating…" : "Regenerate"}
+              {regeneratingHook ? "Refreshing…" : "Refresh"}
             </Button>
           </CardHeader>
           <CardContent>
@@ -469,7 +469,7 @@ export default function ProjectPlanPage() {
                 }
               }}
             >
-              {regeneratingStyle ? "Regenerating…" : "Regenerate"}
+              {regeneratingStyle ? "Refreshing…" : "Refresh"}
             </Button>
           </CardHeader>
           <CardContent>
@@ -511,7 +511,7 @@ export default function ProjectPlanPage() {
               <>
                 <div className="flex items-center justify-between text-sm mb-3">
                   <span className="text-muted-foreground">
-                    {shots.filter((s) => s.status === "captured").length} of {shots.length} shots captured
+                    {shots.filter((s) => s.status === "captured").length} of {shots.length} shots assigned
                   </span>
                   {shots.filter((s) => s.status === "captured").length === shots.length && shots.length > 0 ? (
                     <span className="text-muted-foreground font-medium text-primary">Project complete</span>
@@ -547,8 +547,8 @@ export default function ProjectPlanPage() {
         <Button className="w-full min-h-12" size="lg" asChild>
           <Link href={`/project/${project._id}/capture`}>Let&apos;s Capture</Link>
         </Button>
-        <Button variant="outline" className="w-full min-h-12" size="lg" asChild>
-          <Link href={`/project/${project._id}/report`}>View report</Link>
+        <Button variant="outline" className="w-full min-h-12" size="lg" disabled aria-disabled="true" title="Coming soon">
+          View report
         </Button>
       </div>
 

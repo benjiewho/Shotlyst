@@ -84,7 +84,7 @@ function DashboardContent() {
           </div>
         ) : (
           <ul className="flex flex-col gap-3">
-            {listWithProgress.map(({ project, capturedCount, totalShots }) => (
+            {listWithProgress.map(({ project, capturedCount, totalShots, totalMediaCount }) => (
               <li key={project._id}>
                 <Card
                   className={cn(
@@ -101,6 +101,12 @@ function DashboardContent() {
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {CONTENT_TYPE_LABEL[project.contentType] ??
                             project.contentType}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {capturedCount} of {totalShots} scenes assigned
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Total videos: {totalMediaCount}
                         </p>
                       </Link>
                       <div className="shrink-0 flex items-center gap-1">

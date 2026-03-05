@@ -26,7 +26,12 @@ export const listWithProgress = query({
         .collect();
       const totalShots = shots.length;
       const capturedCount = shots.filter((s) => s.status === "captured").length;
-      result.push({ project, capturedCount, totalShots });
+      const mediaRows = await ctx.db
+        .query("media")
+        .withIndex("by_project_id", (q) => q.eq("projectId", project._id))
+        .collect();
+      const totalMediaCount = mediaRows.length;
+      result.push({ project, capturedCount, totalShots, totalMediaCount });
     }
     return result;
   },

@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "convex/react";
+import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 type TopBarConfig = {
   title: string;
@@ -47,6 +49,7 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
   const isNewProject = pathname === "/project/new";
   const isLibrary = pathname === "/library";
   const isProfile = pathname === "/profile";
+  const { signOut } = useAuthActions() ?? {};
 
   return (
     <div className="min-h-screen flex flex-col pb-20 bg-background">
@@ -76,7 +79,7 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
               </h1>
             ))}
           </div>
-          <div className="w-14 shrink-0 flex items-center justify-end">
+          <div className="shrink-0 flex items-center justify-end gap-1">
             {!isLibrary && (
               <Link
                 href="/library"
@@ -84,6 +87,16 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
               >
                 Library
               </Link>
+            )}
+            {isProfile && signOut && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="min-h-9 text-sm text-muted-foreground hover:text-foreground"
+                onClick={() => void signOut()}
+              >
+                Sign out
+              </Button>
             )}
           </div>
         </div>

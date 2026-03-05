@@ -9,7 +9,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { Info, Maximize2 } from "lucide-react";
+import { Info, Maximize2, Minimize2, ChevronDown, ChevronUp } from "lucide-react";
 import { ReplaceVideoModal } from "@/components/replace-video-modal";
 
 function formatDuration(seconds: number): string {
@@ -17,6 +17,13 @@ function formatDuration(seconds: number): string {
   const s = Math.floor(seconds % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+
+const SHOT_CATEGORY_LABELS: Record<string, string> = {
+  hook_shot: "Hook shot",
+  establishing_shot: "Establishing shot",
+  action_shots: "Action shots",
+  detail_broll: "Detail/B-roll",
+};
 
 const SHOT_EXPLANATIONS: Record<string, string> = {
   hook_shot:
@@ -82,6 +89,8 @@ export default function CapturePage() {
   const [recordedBlobUrl, setRecordedBlobUrl] = useState<string | null>(null);
   const [savedToLibraryFeedback, setSavedToLibraryFeedback] = useState(false);
   const [revealedFeedbackShotId, setRevealedFeedbackShotId] = useState<Id<"shots"> | null>(null);
+  const [shotListExpanded, setShotListExpanded] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraWrapperRef = useRef<HTMLDivElement>(null);
@@ -183,6 +192,12 @@ export default function CapturePage() {
       if (video) video.srcObject = null;
     };
   }, [cameraOpen, stream]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
 
   useEffect(() => {
     if (!recordedBlob && !(selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl)) {
@@ -460,9 +475,19 @@ export default function CapturePage() {
               <Info className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
             </button>
             {showExplanation && (
-              <p className="mt-2 text-xs text-muted-foreground rounded-lg bg-muted/60 px-3 py-2">
-                {getShotExplanation(currentShot.shotCategory, currentShot.title)}
-              </p>
+              <div className="mt-2 text-xs text-muted-foreground rounded-lg bg-muted/60 px-3 py-2 space-y-2">
+                <p>
+                  <span className="font-medium text-foreground">Shot type: </span>
+                  {SHOT_CATEGORY_LABELS[currentShot.shotCategory ?? ""] ?? currentShot.shotCategory ?? "—"}
+                </p>
+                {currentShot.description && (
+                  <p>
+                    <span className="font-medium text-foreground">Description: </span>
+                    {currentShot.description}
+                  </p>
+                )}
+                <p>{getShotExplanation(currentShot.shotCategory, currentShot.title)}</p>
+              </div>
             )}
           </div>
         )}
@@ -475,10 +500,22 @@ export default function CapturePage() {
       {/* Shot list — above camera; tap to select which shot to capture */}
       <Card className="mb-4 relative z-10">
         <CardContent className="p-4">
-          <h2 className="text-sm font-medium text-foreground mb-3">Shot list</h2>
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h2 className="text-sm font-medium text-foreground">Shot list</h2>
+            <button
+              type="button"
+              onClick={() => setShotListExpanded((v) => !v)}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+              aria-label={shotListExpanded ? "Collapse shot list" : "Expand shot list"}
+            >
+              {shotListExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+          </div>
+          {shotListExpanded && (
+          <>
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-sm mb-2">
             <span className="text-muted-foreground break-words min-w-0">
-              {capturedCount} of {totalShots} shots captured
+              {capturedCount} of {totalShots} shots assigned
             </span>
             {allCaptured ? (
               <span className="text-muted-foreground font-medium text-primary break-words min-w-0">
@@ -548,6 +585,8 @@ export default function CapturePage() {
             );
             })}
           </ul>
+          </>
+          )}
         </CardContent>
       </Card>
 
@@ -781,18 +820,31 @@ export default function CapturePage() {
                       setStreamAspect({ w: v.videoWidth, h: v.videoHeight });
                   }}
                 />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  className="absolute top-2 right-2 h-9 w-9 rounded-lg bg-background/80 hover:bg-background shadow-md"
-                  aria-label="Fullscreen camera"
-                  onClick={() => {
-                    cameraWrapperRef.current?.requestFullscreen?.().catch(() => {});
-                  }}
-                >
-                  <Maximize2 className="h-4 w-4" />
-                </Button>
+                {!isFullscreen ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    className="absolute top-2 right-2 h-9 w-9 rounded-lg bg-background/80 hover:bg-background shadow-md"
+                    aria-label="Fullscreen camera"
+                    onClick={() => {
+                      cameraWrapperRef.current?.requestFullscreen?.().catch(() => {});
+                    }}
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    className="absolute top-2 right-2 h-9 w-9 rounded-lg bg-background/80 hover:bg-background shadow-md z-10"
+                    aria-label="Exit fullscreen"
+                    onClick={() => document.exitFullscreen?.()}
+                  >
+                    <Minimize2 className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
               <div className="flex justify-center gap-2 pt-4 pb-2">
                 {!recording ? (

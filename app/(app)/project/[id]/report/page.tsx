@@ -43,7 +43,7 @@ function buildEditGuideText(
     missing.forEach((s) => lines.push(`- ${s.title}`));
   }
   lines.push("");
-  lines.push(`Coverage: ${captured.length} of ${shots.length} shots captured.`);
+  lines.push(`Coverage: ${captured.length} of ${shots.length} shots assigned.`);
   return lines.join("\n");
 }
 
@@ -147,7 +147,7 @@ export default function ReportPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-foreground font-medium">
-              {capturedCount} of {totalShots} key shots captured
+              {capturedCount} of {totalShots} key shots assigned
             </p>
             {totalShots > 0 && (
               <div className="mt-2 h-2 w-full rounded-full bg-muted overflow-hidden">
