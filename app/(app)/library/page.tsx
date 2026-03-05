@@ -161,9 +161,9 @@ function MediaThumbnail({
           <Download className="h-3.5 w-3.5" />
         </Button>
         <Button
-          variant="ghost"
+          variant="destructive"
           size="sm"
-          className="text-xs text-destructive hover:text-destructive"
+          className="text-xs"
           onClick={() => setDeleteOpen(true)}
           disabled={disabled}
         >
@@ -181,7 +181,7 @@ function MediaThumbnail({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground"
+              className="bg-red-600 hover:bg-red-700 text-white"
               onClick={async () => {
                 await onDelete();
                 setDeleteOpen(false);
