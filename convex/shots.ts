@@ -325,3 +325,22 @@ export const setSceneFeedback = mutation({
     return args.shotId;
   },
 });
+
+export const setHighlightCandidatesJson = mutation({
+  args: {
+    shotId: v.id("shots"),
+    highlightCandidatesJson: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const shot = await ctx.db.get(args.shotId);
+    if (!shot) throw new Error("Shot not found");
+    const project = await ctx.db.get(shot.projectId);
+    if (!project || project.userId !== userId) throw new Error("Unauthorized");
+    await ctx.db.patch(args.shotId, {
+      highlightCandidatesJson: args.highlightCandidatesJson ?? undefined,
+    });
+    return args.shotId;
+  },
+});

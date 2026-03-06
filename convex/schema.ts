@@ -110,6 +110,8 @@ export default defineSchema({
         cons: v.array(v.string()),
       })
     ),
+    /** Optional: raw candidate windows + Gemini scores from two-stage pipeline (for debugging / future use). */
+    highlightCandidatesJson: v.optional(v.string()),
   })
     .index("by_project_id", ["projectId"])
     .index("by_scene_storage_id", ["sceneStorageId"]),

@@ -1,0 +1,12 @@
+{
+  "sceneChangeThreshold": 0.4,
+  "motionSpikeThreshold": 0.35,
+  "audioSpikeThreshold": 0.4,
+  "speechEmphasisThreshold": 0.3,
+  "maxCandidates": 8,
+  "paddingBeforeSeconds": 5,
+  "paddingAfterSeconds": 8,
+  "targetDurationMinSeconds": 10,
+  "targetDurationMaxSeconds": 45,
+  "maxClipDurationSeconds": 60
+}

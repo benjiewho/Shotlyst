@@ -1,0 +1,17 @@
+{
+  "candidates": [
+    {
+      "startTime": 12.5,
+      "endTime": 38.2,
+      "duration": 25.7,
+      "motionScore": 0.72,
+      "audioSpikeScore": 0.45,
+      "sceneChangeScore": 0,
+      "speechEmphasisScore": 0.6,
+      "mergedScore": 0.58,
+      "clipUrl": "http://localhost:3080/clip/abc123"
+    }
+  ],
+  "durationSeconds": 120,
+  "clipUrls": ["http://localhost:3080/clip/abc123"]
+}
