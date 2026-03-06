@@ -175,6 +175,7 @@ export default function CapturePage() {
     if (analysisTriggeredForShotsRef.current.has(selectedShot._id)) return;
     analysisTriggeredForShotsRef.current.add(selectedShot._id);
     void (async () => {
+      await new Promise((r) => setTimeout(r, 2000));
       const videoUrl = await convex.query(api.shots.getSceneUrlByShotId, {
         shotId: selectedShot._id,
       });
@@ -214,8 +215,6 @@ export default function CapturePage() {
   const confirmCapture = useCallback(async () => {
     if (!currentShot || !recordedBlob) return;
     if (isUploading) return;
-    // Redirect to report only when this upload completes the last shot (all shots will be captured).
-    const willCompleteAllShots = totalShots > 0 && capturedCount + 1 === totalShots;
     setIsUploading(true);
     setUploadProgress(0);
     setError(null);
@@ -259,6 +258,12 @@ export default function CapturePage() {
         storageId,
         duration: Math.round(recordedDuration),
       });
+      setRecordedBlob(null);
+      setRecordedDuration(0);
+      const remaining = pendingShots.filter((s) => s._id !== currentShot._id);
+      setSelectedShotId(remaining.length > 0 ? remaining[0]._id : null);
+      // Run analysis after a short delay so the stored video URL is available.
+      await new Promise((r) => setTimeout(r, 2000));
       const videoUrl = await convex.query(api.shots.getSceneUrlByShotId, {
         shotId: currentShot._id,
       });
@@ -266,14 +271,6 @@ export default function CapturePage() {
         shotId: currentShot._id,
         videoUrl: videoUrl ?? undefined,
       }).catch(() => {});
-      setRecordedBlob(null);
-      setRecordedDuration(0);
-      const remaining = pendingShots.filter((s) => s._id !== currentShot._id);
-      if (willCompleteAllShots && projectId) {
-        router.push(`/project/${projectId}/report`);
-        return;
-      }
-      setSelectedShotId(remaining.length > 0 ? remaining[0]._id : null);
       if (remaining.length > 0) {
         window.scrollTo({ top: 0, behavior: "smooth" });
         if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
@@ -286,7 +283,7 @@ export default function CapturePage() {
       setIsUploading(false);
       setUploadProgress(null);
     }
-  }, [currentShot, recordedBlob, recordedDuration, recordedBlobUrl, generateUploadUrl, saveToLibrary, linkScene, convex, analyzeStrongMoments, pendingShots, totalShots, capturedCount, isUploading, projectId, router]);
+  }, [currentShot, recordedBlob, recordedDuration, recordedBlobUrl, generateUploadUrl, saveToLibrary, linkScene, convex, analyzeStrongMoments, pendingShots, isUploading, projectId]);
 
   const saveToLibraryOnly = useCallback(async () => {
     if (!currentShot || !recordedBlob || !projectId) return;
@@ -671,7 +668,7 @@ export default function CapturePage() {
                     ))}
                   </ul>
                 ) : selectedShot.sceneStorageId ? (
-                  <p className="text-xs text-muted-foreground">Analyzing…</p>
+                  <p className="text-xs text-muted-foreground">Analyzing… video</p>
                 ) : null}
               </div>
               <div className="w-full space-y-2 flex-shrink-0 min-h-0">
@@ -710,7 +707,7 @@ export default function CapturePage() {
                     Get AI Feedback
                   </Button>
                 ) : selectedShot.sceneStorageId ? (
-                  <p className="text-xs text-muted-foreground">Analyzing…</p>
+                  <p className="text-xs text-muted-foreground">Analyzing… video</p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     Run analysis above to see alignment and feedback.

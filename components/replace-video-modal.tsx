@@ -102,6 +102,7 @@ export function ReplaceVideoModal({
     setSelectingStorageId(storageId);
     try {
       await linkScene({ shotId, storageId, duration: Math.round(duration) });
+      await new Promise((r) => setTimeout(r, 2000));
       const videoUrl = await convex.query(api.shots.getSceneUrlByShotId, { shotId });
       analyzeStrongMoments({ shotId, videoUrl: videoUrl ?? undefined }).catch(() => {});
       onClose();

@@ -313,24 +313,34 @@ export const analyzeVideoForStrongMoments = action({
         });
         return { success: true };
       }
-      let list: { timestampSeconds: number; reason: string }[];
-      let alignmentSummary: string;
-      let pros: string[];
-      let cons: string[];
-      for (let attempt = 0; attempt <= 1; attempt++) {
+      let base64 = "";
+      let mimeType = "video/mp4";
+      for (let videoAttempt = 0; videoAttempt < 3; videoAttempt++) {
         try {
           const resp = await fetch(videoUrl);
           if (!resp.ok) throw new Error(`Failed to fetch video: ${resp.status}`);
           const buf = await resp.arrayBuffer();
           const maxBytes = 20 * 1024 * 1024;
           const bytes = buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf;
-          const base64 = Buffer.from(bytes).toString("base64");
-          const mimeType = (resp.headers.get("content-type") || "video/mp4").split(";")[0].trim();
-          const prompt = buildCombinedAnalysisPrompt(
-            project.goalSummary,
-            shot.title,
-            shot.description
-          );
+          base64 = Buffer.from(bytes).toString("base64");
+          mimeType = (resp.headers.get("content-type") || "video/mp4").split(";")[0].trim();
+          break;
+        } catch (e) {
+          if (videoAttempt < 2) await new Promise((r) => setTimeout(r, 2000));
+          else throw e;
+        }
+      }
+      const prompt = buildCombinedAnalysisPrompt(
+        project.goalSummary,
+        shot.title,
+        shot.description
+      );
+      let list: { timestampSeconds: number; reason: string }[];
+      let alignmentSummary: string;
+      let pros: string[];
+      let cons: string[];
+      for (let attempt = 0; attempt <= 1; attempt++) {
+        try {
           const genAI = new GoogleGenerativeAI(apiKey);
           const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
           const result = await model.generateContent([

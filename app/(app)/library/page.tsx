@@ -297,6 +297,7 @@ export default function LibraryPage() {
                                     storageId: m.storageId as Id<"_storage">,
                                     duration: m.duration,
                                   });
+                                  await new Promise((r) => setTimeout(r, 2000));
                                   const videoUrl = await convex.query(api.shots.getSceneUrlByShotId, {
                                     shotId: shot.shotId as Id<"shots">,
                                   });
