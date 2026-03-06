@@ -162,15 +162,15 @@ function SortableShotRow({
           </div>
           <div>
             <label className="text-xs text-muted-foreground block mb-0.5">Title</label>
-            <input
-              type="text"
+            <textarea
               defaultValue={shot.title}
               onBlur={(e) => {
                 const v = e.target.value.trim();
                 if (v && v !== shot.title)
                   updateShot({ shotId: shot._id, title: v });
               }}
-              className="w-full rounded-lg border border-input bg-background px-2 py-1 text-sm font-medium"
+              rows={2}
+              className="w-full rounded-lg border border-input bg-background px-2 py-1 text-sm font-medium resize-none break-words"
             />
           </div>
           {shot.status === "captured" && shot.sceneStorageId && (

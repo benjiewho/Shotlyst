@@ -191,6 +191,10 @@ Project brief:
       }
     }
 
+    if (plan.shots.length === 0) {
+      plan.shots = [...STUB_PLAN.shots];
+    }
+
     await ctx.runMutation(api.projects.updatePlan, {
       projectId: args.projectId,
       goalSummary: plan.goalSummary,
@@ -233,17 +237,28 @@ Return JSON in this exact shape:
 }
 
 export const analyzeVideoForStrongMoments = action({
-  args: { shotId: v.id("shots") },
+  args: {
+    shotId: v.id("shots"),
+    videoUrl: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     try {
       const shot = await ctx.runQuery(api.shots.getShot, { shotId: args.shotId });
-      if (!shot?.sceneStorageId) throw new Error("Shot has no video");
+      if (!shot) throw new Error("Shot not found");
+      if (!shot.sceneStorageId && !args.videoUrl?.trim()) throw new Error("Shot has no video");
       const project = await ctx.runQuery(api.projects.get, { id: shot.projectId });
       if (!project) throw new Error("Project not found");
-      const videoUrl = await ctx.runQuery(api.shots.getSceneUrl, {
-        storageId: shot.sceneStorageId,
-      });
-      if (!videoUrl) throw new Error("Could not get video URL");
+      let videoUrl: string;
+      if (args.videoUrl?.trim()) {
+        videoUrl = args.videoUrl.trim();
+      } else {
+        if (!shot.sceneStorageId) throw new Error("Shot has no video");
+        const url = await ctx.runQuery(api.shots.getSceneUrl, {
+          storageId: shot.sceneStorageId,
+        });
+        if (!url) throw new Error("Could not get video URL");
+        videoUrl = url;
+      }
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
         await ctx.runMutation(api.shots.setStrongMoments, {

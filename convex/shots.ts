@@ -52,6 +52,19 @@ export const getSceneUrl = query({
   },
 });
 
+export const getSceneUrlByShotId = query({
+  args: { shotId: v.id("shots") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const shot = await ctx.db.get(args.shotId);
+    if (!shot?.sceneStorageId) return null;
+    const project = await ctx.db.get(shot.projectId);
+    if (!project || project.userId !== userId) return null;
+    return await ctx.storage.getUrl(shot.sceneStorageId);
+  },
+});
+
 export const getShot = query({
   args: { shotId: v.id("shots") },
   handler: async (ctx, args) => {

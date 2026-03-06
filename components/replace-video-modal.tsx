@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, useConvex } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -79,8 +79,9 @@ export function ReplaceVideoModal({
   shotId: Id<"shots">;
   shots: ShotWithStorage[];
   linkScene: (args: { shotId: Id<"shots">; storageId: Id<"_storage">; duration: number }) => Promise<unknown>;
-  analyzeStrongMoments: (args: { shotId: Id<"shots"> }) => Promise<unknown>;
+  analyzeStrongMoments: (args: { shotId: Id<"shots">; videoUrl?: string }) => Promise<unknown>;
 }) {
+  const convex = useConvex();
   const projectMedia = useQuery(
     api.media.listByProject,
     open ? { projectId } : "skip"
@@ -101,7 +102,8 @@ export function ReplaceVideoModal({
     setSelectingStorageId(storageId);
     try {
       await linkScene({ shotId, storageId, duration: Math.round(duration) });
-      analyzeStrongMoments({ shotId }).catch(() => {});
+      const videoUrl = await convex.query(api.shots.getSceneUrlByShotId, { shotId });
+      analyzeStrongMoments({ shotId, videoUrl: videoUrl ?? undefined }).catch(() => {});
       onClose();
     } finally {
       setSelectingStorageId(null);

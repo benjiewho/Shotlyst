@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
-import { useQuery, useMutation, useAction } from "convex/react";
+import { useQuery, useMutation, useAction, useConvex } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -72,6 +72,7 @@ export default function CapturePage() {
   const updateStatus = useMutation(api.shots.updateStatus);
   const updateShot = useMutation(api.shots.updateShot);
   const analyzeStrongMoments = useAction(api.ai.analyzeVideoForStrongMoments);
+  const convex = useConvex();
 
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedDuration, setRecordedDuration] = useState(0);
@@ -173,10 +174,18 @@ export default function CapturePage() {
     if (!hasNoStrongMoments) return;
     if (analysisTriggeredForShotsRef.current.has(selectedShot._id)) return;
     analysisTriggeredForShotsRef.current.add(selectedShot._id);
-    analyzeStrongMoments({ shotId: selectedShot._id }).catch(() => {});
+    void (async () => {
+      const videoUrl = await convex.query(api.shots.getSceneUrlByShotId, {
+        shotId: selectedShot._id,
+      });
+      await analyzeStrongMoments({
+        shotId: selectedShot._id,
+        videoUrl: videoUrl ?? undefined,
+      });
+    })().catch(() => {});
     // Intentionally depend on specific fields to avoid duplicate triggers
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedShot?._id, selectedShot?.sceneStorageId, selectedShot?.strongMoments, analyzeStrongMoments]);
+  }, [selectedShot?._id, selectedShot?.sceneStorageId, selectedShot?.strongMoments, analyzeStrongMoments, convex]);
 
   useEffect(() => {
     if (!recordedBlob && !(selectedShot?.status === "captured" && selectedShot?.sceneStorageId && sceneUrl)) {
@@ -250,7 +259,13 @@ export default function CapturePage() {
         storageId,
         duration: Math.round(recordedDuration),
       });
-      analyzeStrongMoments({ shotId: currentShot._id }).catch(() => {});
+      const videoUrl = await convex.query(api.shots.getSceneUrlByShotId, {
+        shotId: currentShot._id,
+      });
+      analyzeStrongMoments({
+        shotId: currentShot._id,
+        videoUrl: videoUrl ?? undefined,
+      }).catch(() => {});
       setRecordedBlob(null);
       setRecordedDuration(0);
       const remaining = pendingShots.filter((s) => s._id !== currentShot._id);
@@ -271,7 +286,7 @@ export default function CapturePage() {
       setIsUploading(false);
       setUploadProgress(null);
     }
-  }, [currentShot, recordedBlob, recordedDuration, recordedBlobUrl, generateUploadUrl, saveToLibrary, linkScene, analyzeStrongMoments, pendingShots, totalShots, capturedCount, isUploading, projectId, router]);
+  }, [currentShot, recordedBlob, recordedDuration, recordedBlobUrl, generateUploadUrl, saveToLibrary, linkScene, convex, analyzeStrongMoments, pendingShots, totalShots, capturedCount, isUploading, projectId, router]);
 
   const saveToLibraryOnly = useCallback(async () => {
     if (!currentShot || !recordedBlob || !projectId) return;
