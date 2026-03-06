@@ -219,6 +219,42 @@ Project brief:
   },
 });
 
+function getAnalysisFailureReason(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  const name = err instanceof Error ? err.name : "";
+  const lower = message.toLowerCase();
+  const isNetwork =
+    name === "GoogleGenerativeAIFetchError" ||
+    lower.includes("fetch") ||
+    lower.includes("network") ||
+    lower.includes("timeout") ||
+    lower.includes("etimedout") ||
+    lower.includes("econnreset");
+  if (isNetwork)
+    return "Connection or timeout. Try again when your network is stable.";
+  if (
+    lower.includes("empty response") ||
+    lower.includes("json") ||
+    lower.includes("parse")
+  )
+    return "We couldn't get feedback for this clip. Try a longer video (a few seconds of clear action) and run again.";
+  return "Analysis failed or unavailable.";
+}
+
+function isTransientAnalysisError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  const name = err instanceof Error ? err.name : "";
+  const lower = message.toLowerCase();
+  return (
+    name === "GoogleGenerativeAIFetchError" ||
+    lower.includes("fetch") ||
+    lower.includes("network") ||
+    lower.includes("timeout") ||
+    lower.includes("etimedout") ||
+    lower.includes("econnreset")
+  );
+}
+
 function buildCombinedAnalysisPrompt(goal: string, shotTitle: string, shotDescription: string): string {
   return `Watch this short video and analyze it in two ways. Return a single JSON object only, no markdown, no explanation.
 
@@ -277,80 +313,91 @@ export const analyzeVideoForStrongMoments = action({
         });
         return { success: true };
       }
-      const resp = await fetch(videoUrl);
-      if (!resp.ok) throw new Error(`Failed to fetch video: ${resp.status}`);
-      const buf = await resp.arrayBuffer();
-      const maxBytes = 20 * 1024 * 1024;
-      const bytes = buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf;
-      const base64 = Buffer.from(bytes).toString("base64");
-      const mimeType = (resp.headers.get("content-type") || "video/mp4").split(";")[0].trim();
-      const prompt = buildCombinedAnalysisPrompt(
-        project.goalSummary,
-        shot.title,
-        shot.description
-      );
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-      const result = await model.generateContent([
-        {
-          inlineData: {
-            mimeType: mimeType.startsWith("video/") ? mimeType : "video/mp4",
-            data: base64,
-          },
-        },
-        { text: prompt },
-      ]);
-      const text = result.response.text();
-      if (!text) throw new Error("Empty response from Gemini");
-      let jsonStr = text.trim();
-      const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (codeBlock) jsonStr = codeBlock[1].trim();
-      const parsed = JSON.parse(jsonStr) as {
-        strongMoments?: { timestampSeconds?: number; reason?: string }[];
-        sceneFeedback?: {
-          alignmentSummary?: string;
-          pros?: string[];
-          cons?: string[];
-        };
-      };
-      const list = Array.isArray(parsed.strongMoments)
-        ? parsed.strongMoments
-            .filter(
-              (m): m is { timestampSeconds: number; reason: string } =>
-                typeof m?.timestampSeconds === "number" && typeof m?.reason === "string"
-            )
-            .slice(0, 10)
-        : [];
+      let list: { timestampSeconds: number; reason: string }[];
+      let alignmentSummary: string;
+      let pros: string[];
+      let cons: string[];
+      for (let attempt = 0; attempt <= 1; attempt++) {
+        try {
+          const resp = await fetch(videoUrl);
+          if (!resp.ok) throw new Error(`Failed to fetch video: ${resp.status}`);
+          const buf = await resp.arrayBuffer();
+          const maxBytes = 20 * 1024 * 1024;
+          const bytes = buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf;
+          const base64 = Buffer.from(bytes).toString("base64");
+          const mimeType = (resp.headers.get("content-type") || "video/mp4").split(";")[0].trim();
+          const prompt = buildCombinedAnalysisPrompt(
+            project.goalSummary,
+            shot.title,
+            shot.description
+          );
+          const genAI = new GoogleGenerativeAI(apiKey);
+          const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+          const result = await model.generateContent([
+            {
+              inlineData: {
+                mimeType: mimeType.startsWith("video/") ? mimeType : "video/mp4",
+                data: base64,
+              },
+            },
+            { text: prompt },
+          ]);
+          const text = result.response.text();
+          if (!text) throw new Error("Empty response from Gemini");
+          let jsonStr = text.trim();
+          const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+          if (codeBlock) jsonStr = codeBlock[1].trim();
+          const parsed = JSON.parse(jsonStr) as {
+            strongMoments?: { timestampSeconds?: number; reason?: string }[];
+            sceneFeedback?: {
+              alignmentSummary?: string;
+              pros?: string[];
+              cons?: string[];
+            };
+          };
+          list = Array.isArray(parsed.strongMoments)
+            ? parsed.strongMoments
+                .filter(
+                  (m): m is { timestampSeconds: number; reason: string } =>
+                    typeof m?.timestampSeconds === "number" && typeof m?.reason === "string"
+                )
+                .slice(0, 10)
+            : [];
+          const sf = parsed.sceneFeedback;
+          alignmentSummary =
+            typeof sf?.alignmentSummary === "string" ? sf.alignmentSummary : "Analysis unavailable.";
+          pros = Array.isArray(sf?.pros)
+            ? sf.pros.filter((p): p is string => typeof p === "string").slice(0, 5)
+            : [];
+          cons = Array.isArray(sf?.cons)
+            ? sf.cons.filter((c): c is string => typeof c === "string").slice(0, 5)
+            : [];
+          break;
+        } catch (e) {
+          if (attempt < 1 && isTransientAnalysisError(e)) continue;
+          throw e;
+        }
+      }
       await ctx.runMutation(api.shots.setStrongMoments, {
         shotId: args.shotId,
-        strongMoments: list,
+        strongMoments: list!,
       });
-      const sf = parsed.sceneFeedback;
-      const alignmentSummary =
-        typeof sf?.alignmentSummary === "string" ? sf.alignmentSummary : "Analysis unavailable.";
-      const pros = Array.isArray(sf?.pros)
-        ? sf.pros.filter((p): p is string => typeof p === "string").slice(0, 5)
-        : [];
-      const cons = Array.isArray(sf?.cons)
-        ? sf.cons.filter((c): c is string => typeof c === "string").slice(0, 5)
-        : [];
       await ctx.runMutation(api.shots.setSceneFeedback, {
         shotId: args.shotId,
-        sceneFeedback: { alignmentSummary, pros, cons },
+        sceneFeedback: { alignmentSummary: alignmentSummary!, pros: pros!, cons: cons! },
       });
       return { success: true };
     } catch (err) {
       console.error("[analyzeVideoForStrongMoments]", err);
+      const reason = getAnalysisFailureReason(err);
       await ctx.runMutation(api.shots.setStrongMoments, {
         shotId: args.shotId,
-        strongMoments: [
-          { timestampSeconds: 0, reason: "Analysis failed or unavailable." },
-        ],
+        strongMoments: [{ timestampSeconds: 0, reason }],
       });
       await ctx.runMutation(api.shots.setSceneFeedback, {
         shotId: args.shotId,
         sceneFeedback: {
-          alignmentSummary: "Analysis failed or unavailable.",
+          alignmentSummary: reason,
           pros: [],
           cons: [],
         },

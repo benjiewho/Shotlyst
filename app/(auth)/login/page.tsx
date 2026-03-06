@@ -1,15 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { Button } from "@/components/ui/button";
 
-export default function LoginPage() {
+function LoginContent() {
+  const searchParams = useSearchParams();
   const authActions = useAuthActions();
   const signIn = authActions?.signIn;
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [authReady, setAuthReady] = useState(false);
+  const authError = searchParams.get("error");
+  const showAuthErrorBanner = authError === "callback" || authError === "auth_failed";
 
   useEffect(() => {
     const t = setTimeout(() => setAuthReady(true), 100);
@@ -41,6 +45,11 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
       <div className="flex flex-col items-center gap-8 w-full max-w-sm">
+        {showAuthErrorBanner && (
+          <div className="w-full rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/50 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+            Sign-in didn&apos;t complete. Check your connection and try again, or sign in with email.
+          </div>
+        )}
         <div className="flex flex-col items-center gap-2">
           <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center text-primary-foreground text-2xl font-bold shadow-lg">
             S
@@ -69,5 +78,19 @@ export default function LoginPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
+          <div className="text-muted-foreground">Loading...</div>
+        </main>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }
