@@ -23,7 +23,7 @@ import { Trash2, GripVertical } from "lucide-react";
 import { ReplaceVideoModal } from "@/components/replace-video-modal";
 import { useShotCapture } from "@/components/capture/useShotCapture";
 import { ShotCapturePanel } from "@/components/capture/ShotCapturePanel";
-import { SwipeableCaptureArea } from "@/components/capture/SwipeableCaptureArea";
+import { SwipeableVertical } from "@/components/capture/SwipeableVertical";
 import {
   DndContext,
   type DragEndEvent,
@@ -87,7 +87,6 @@ function SortableShotRow({
   onSetActiveShot?: () => void;
   expandedContent?: React.ReactNode;
 }) {
-  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const {
     attributes,
     listeners,
@@ -187,7 +186,7 @@ function SortableShotRow({
               className="w-full rounded-lg border border-input bg-background px-2 py-1 text-sm font-medium resize-none break-words"
             />
           </div>
-          {shot.status === "captured" && shot.sceneStorageId && (
+          {shot.status === "captured" && shot.sceneStorageId ? (
             <div className="flex items-center gap-2 flex-wrap">
               <SceneThumbnail storageId={shot.sceneStorageId} />
               <Button
@@ -199,18 +198,18 @@ function SortableShotRow({
                 Replace
               </Button>
             </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onSetActiveShot}
+            >
+              Add video
+            </Button>
           )}
           <div>
-            <div className="flex items-center justify-between mb-0.5">
-              <label className="text-xs text-muted-foreground">Description</label>
-              <button
-                type="button"
-                className="text-xs text-primary hover:underline"
-                onClick={() => setDescriptionExpanded((e) => !e)}
-              >
-                {descriptionExpanded ? "Collapse" : "Expand"}
-              </button>
-            </div>
+            <label className="text-xs text-muted-foreground block mb-0.5">Description</label>
             <textarea
               defaultValue={shot.description}
               onBlur={(e) => {
@@ -220,7 +219,7 @@ function SortableShotRow({
               }}
               className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs text-muted-foreground resize-none"
               placeholder="Description / notes…"
-              rows={descriptionExpanded ? 5 : 2}
+              rows={5}
             />
           </div>
         </div>
@@ -261,6 +260,7 @@ export default function ProjectPlanPage() {
   const analyzeStrongMoments = useAction(api.ai.analyzeVideoForStrongMoments);
   const convex = useConvex();
   const [replaceModalShotId, setReplaceModalShotId] = useState<Id<"shots"> | null>(null);
+  const [shotListViewMode, setShotListViewMode] = useState<"editor" | "capture">("editor");
   const regenerateHook = useAction(api.ai.regenerateHook);
   const regenerateStyle = useAction(api.ai.regenerateStyle);
 
@@ -623,33 +623,131 @@ export default function ProjectPlanPage() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-base">Shot list</CardTitle>
-            {projectId && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  if (!projectId || shots === undefined) return;
-                  await createOneShot({
-                    projectId,
-                    type: "nice",
-                    shotCategory: "establishing_shot",
-                    title: "New shot",
-                    description: "Add your notes here.",
-                    order: shots.length,
-                  });
-                }}
-              >
-                Add shot
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg border border-input bg-muted/50 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setShotListViewMode("editor")}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                    shotListViewMode === "editor"
+                      ? "bg-background text-foreground shadow"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Editor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShotListViewMode("capture");
+                    if (!activeShotId && sortedShots.length > 0)
+                      setActiveShotId(sortedShots[0]._id);
+                  }}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                    shotListViewMode === "capture"
+                      ? "bg-background text-foreground shadow"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Capture
+                </button>
+              </div>
+              {projectId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    if (!projectId || shots === undefined) return;
+                    await createOneShot({
+                      projectId,
+                      type: "nice",
+                      shotCategory: "establishing_shot",
+                      title: "New shot",
+                      description: "Add your notes here.",
+                      order: shots.length,
+                    });
+                  }}
+                >
+                  Add shot
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {shots === undefined ? (
               <p className="text-sm text-muted-foreground">Loading shots…</p>
             ) : shots.length === 0 ? (
               <p className="text-sm text-muted-foreground">No shots in this plan. Add one above.</p>
+            ) : shotListViewMode === "capture" ? (
+              <SwipeableVertical
+                onSwipeUp={() => nextShotId && setActiveShotId(nextShotId)}
+                onSwipeDown={() => prevShotId && setActiveShotId(prevShotId)}
+                className="min-h-[70vh] flex flex-col"
+              >
+                <div className="rounded-xl border border-primary/30 bg-card p-4 flex flex-col gap-3">
+                  {activeShot && (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        Scene {activeShot.order + 1} of {sortedShots.length}
+                      </p>
+                      <p className="text-sm font-medium text-foreground">{activeShot.title}</p>
+                      {activeShot.description ? (
+                        <p className="text-xs text-muted-foreground line-clamp-3">{activeShot.description}</p>
+                      ) : null}
+                      <ShotCapturePanel
+                        mode={captureMode}
+                        shot={activeShot}
+                        recordedBlobUrl={recordedBlobUrl}
+                        isUploading={isUploading}
+                        uploadProgress={uploadProgress}
+                        error={error}
+                        canAssign={!!uploadedStorageId}
+                        onRetake={retake}
+                        onAssign={confirmCapture}
+                        nativeCameraInputRef={nativeCameraInputRef}
+                        onOpenCamera={() => nativeCameraInputRef.current?.click()}
+                        onCameraFileChange={handleNativeCameraFile}
+                        onOpenGallery={() => setReplaceModalShotId(activeShotId)}
+                        sceneUrl={captureMode === "assigned" ? sceneUrl ?? null : null}
+                        onReplace={() => setReplaceModalShotId(activeShotId)}
+                        onUnassign={async () => {
+                          if (!activeShot?._id) return;
+                          try {
+                            await unassignShot({ shotId: activeShot._id });
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : "Unassign failed.");
+                          }
+                        }}
+                        strongMoments={activeShot?.strongMoments ?? null}
+                        sceneFeedback={activeShot?.sceneFeedback ?? null}
+                        revealedFeedback={revealedFeedbackShotId === activeShot?._id}
+                        onRevealFeedback={() => activeShot?._id && setRevealedFeedbackShotId(activeShot._id)}
+                        reviewVideoRef={reviewVideoRef}
+                        assignedVideoInLibrary={assignedVideoInLibrary}
+                        compact
+                      />
+                      <div className="space-y-1 mt-3">
+                        <label className="text-xs font-medium text-foreground">Notes &amp; reminders</label>
+                        <textarea
+                          defaultValue={activeShot.sceneNotes ?? ""}
+                          onBlur={(e) => {
+                            const v = e.target.value;
+                            if (v !== (activeShot.sceneNotes ?? ""))
+                              updateShot({ shotId: activeShot._id, sceneNotes: v });
+                          }}
+                          placeholder="What to do or reminders for this scene…"
+                          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm min-h-[72px] resize-y"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground text-center mt-2">Swipe up/down to change scene</p>
+              </SwipeableVertical>
             ) : (
               <>
                 <div className="flex items-center justify-between text-sm mb-3">
@@ -678,47 +776,41 @@ export default function ProjectPlanPage() {
                         isActive={activeShotId === shot._id}
                         onSetActiveShot={() => setActiveShotId(shot._id)}
                         expandedContent={
-                          activeShotId === shot._id && activeShot ? (
+                          activeShotId === shot._id && activeShot && shotListViewMode === "editor" ? (
                             <>
-                              <SwipeableCaptureArea
-                                onSwipeLeft={() => prevShotId && setActiveShotId(prevShotId)}
-                                onSwipeRight={() => nextShotId && setActiveShotId(nextShotId)}
-                                className="mb-3"
-                              >
-                                <ShotCapturePanel
-                                  mode={captureMode}
-                                  shot={activeShot}
-                                  recordedBlobUrl={recordedBlobUrl}
-                                  isUploading={isUploading}
-                                  uploadProgress={uploadProgress}
-                                  error={error}
-                                  canAssign={!!uploadedStorageId}
-                                  onRetake={retake}
-                                  onAssign={confirmCapture}
-                                  nativeCameraInputRef={nativeCameraInputRef}
-                                  onOpenCamera={() => nativeCameraInputRef.current?.click()}
-                                  onCameraFileChange={handleNativeCameraFile}
-                                  onOpenGallery={() => setReplaceModalShotId(activeShotId)}
-                                  sceneUrl={captureMode === "assigned" ? sceneUrl ?? null : null}
-                                  onReplace={() => setReplaceModalShotId(activeShotId)}
-                                  onUnassign={async () => {
-                                    if (!activeShot?._id) return;
-                                    try {
-                                      await unassignShot({ shotId: activeShot._id });
-                                    } catch (err) {
-                                      setError(err instanceof Error ? err.message : "Unassign failed.");
-                                    }
-                                  }}
-                                  strongMoments={activeShot?.strongMoments ?? null}
-                                  sceneFeedback={activeShot?.sceneFeedback ?? null}
-                                  revealedFeedback={revealedFeedbackShotId === activeShot?._id}
-                                  onRevealFeedback={() => activeShot?._id && setRevealedFeedbackShotId(activeShot._id)}
-                                  reviewVideoRef={reviewVideoRef}
-                                  assignedVideoInLibrary={assignedVideoInLibrary}
-                                  compact
-                                />
-                              </SwipeableCaptureArea>
-                              <div className="space-y-1">
+                              <ShotCapturePanel
+                                mode={captureMode}
+                                shot={activeShot}
+                                recordedBlobUrl={recordedBlobUrl}
+                                isUploading={isUploading}
+                                uploadProgress={uploadProgress}
+                                error={error}
+                                canAssign={!!uploadedStorageId}
+                                onRetake={retake}
+                                onAssign={confirmCapture}
+                                nativeCameraInputRef={nativeCameraInputRef}
+                                onOpenCamera={() => nativeCameraInputRef.current?.click()}
+                                onCameraFileChange={handleNativeCameraFile}
+                                onOpenGallery={() => setReplaceModalShotId(activeShotId)}
+                                sceneUrl={captureMode === "assigned" ? sceneUrl ?? null : null}
+                                onReplace={() => setReplaceModalShotId(activeShotId)}
+                                onUnassign={async () => {
+                                  if (!activeShot?._id) return;
+                                  try {
+                                    await unassignShot({ shotId: activeShot._id });
+                                  } catch (err) {
+                                    setError(err instanceof Error ? err.message : "Unassign failed.");
+                                  }
+                                }}
+                                strongMoments={activeShot?.strongMoments ?? null}
+                                sceneFeedback={activeShot?.sceneFeedback ?? null}
+                                revealedFeedback={revealedFeedbackShotId === activeShot?._id}
+                                onRevealFeedback={() => activeShot?._id && setRevealedFeedbackShotId(activeShot._id)}
+                                reviewVideoRef={reviewVideoRef}
+                                assignedVideoInLibrary={assignedVideoInLibrary}
+                                compact
+                              />
+                              <div className="space-y-1 mt-3">
                                 <label className="text-xs font-medium text-foreground">Notes &amp; reminders</label>
                                 <textarea
                                   defaultValue={activeShot.sceneNotes ?? ""}
