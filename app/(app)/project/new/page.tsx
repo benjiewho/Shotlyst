@@ -54,6 +54,8 @@ export default function NewProjectPage() {
   const [locationImagePreviewUrl, setLocationImagePreviewUrl] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitProgress, setSubmitProgress] = useState(0);
+  const [submitPhase, setSubmitPhase] = useState<"creating" | "generating">("creating");
   const [error, setError] = useState<string | null>(null);
 
   const toggleAudience = (option: string) => {
@@ -131,6 +133,8 @@ export default function NewProjectPage() {
       return;
     }
     setIsSubmitting(true);
+    setSubmitPhase("creating");
+    setSubmitProgress(15);
     try {
       const name = trimmedLocation.length > 30 ? trimmedLocation.slice(0, 30) : trimmedLocation;
       const projectId = await createProject({
@@ -141,11 +145,16 @@ export default function NewProjectPage() {
         audience,
         ...(locationImageStorageId ? { locationImageStorageId } : {}),
       });
+      setSubmitProgress(50);
+      setSubmitPhase("generating");
       await generatePlan({ projectId });
+      setSubmitProgress(100);
+      await new Promise((r) => setTimeout(r, 400));
       router.push(`/project/${projectId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setIsSubmitting(false);
+      setSubmitProgress(0);
     }
   };
 
@@ -157,33 +166,35 @@ export default function NewProjectPage() {
             <CardTitle className="text-base">Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <label htmlFor="location" className="text-sm font-medium text-foreground block mb-1.5">
-                Location
-              </label>
-              <Input
-                id="location"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="e.g. Cafe Onion — Seongsu"
-                className="w-full"
-                disabled={isSubmitting}
-              />
-            </div>
-            <div>
-              <span className="text-sm font-medium text-foreground block mb-1.5">
-                Location photo <span className="text-muted-foreground font-normal">(optional)</span>
-              </span>
-              <input
-                ref={locationPhotoInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                aria-label="Take or choose a location photo"
-                onChange={handleLocationPhotoChange}
-                disabled={isSubmitting || isUploadingImage}
-              />
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="location" className="text-sm font-medium text-foreground block mb-1.5">
+                  Location
+                </label>
+                <Input
+                  id="location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="e.g. Cafe Onion — Seongsu"
+                  className="w-full"
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div>
+                <span className="text-sm font-medium text-foreground block mb-0.5">
+                  Add a photo of this place <span className="text-muted-foreground font-normal">(optional)</span>
+                </span>
+                <p className="text-xs text-muted-foreground mb-1.5">Helps the AI suggest shots for your location.</p>
+                <input
+                  ref={locationPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  aria-label="Take or choose a location photo"
+                  onChange={handleLocationPhotoChange}
+                  disabled={isSubmitting || isUploadingImage}
+                />
               {locationImageStorageId && locationImagePreviewUrl ? (
                 <div className="flex flex-col gap-2">
                   {/* eslint-disable-next-line @next/next/no-img-element -- preview is a blob/object URL */}
@@ -213,6 +224,7 @@ export default function NewProjectPage() {
                   {isUploadingImage ? "Uploading…" : "Take a photo"}
                 </Button>
               )}
+              </div>
             </div>
             <div>
               <label htmlFor="contentType" className="text-sm font-medium text-foreground block mb-1.5">
@@ -288,15 +300,23 @@ export default function NewProjectPage() {
             size="lg"
             disabled={isSubmitting}
           >
-            {isSubmitting ? "Creating project…" : "Create project"}
+            {isSubmitting ? (submitPhase === "creating" ? "Creating project…" : "Generating plan…") : "Create project"}
           </Button>
           <Button type="button" variant="outline" size="lg" asChild disabled={isSubmitting}>
             <Link href="/dashboard">Cancel</Link>
           </Button>
         </div>
         {isSubmitting && (
-          <div className="mt-3 h-1.5 w-full rounded-full bg-muted overflow-hidden">
-            <div className="h-full min-w-[30%] w-1/3 rounded-full bg-primary animate-pulse" />
+          <div className="mt-3 space-y-1.5">
+            <p className="text-sm text-muted-foreground">
+              {submitPhase === "creating" ? "Creating project…" : "Generating plan…"} {submitProgress}%
+            </p>
+            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
+                style={{ width: `${submitProgress}%` }}
+              />
+            </div>
           </div>
         )}
       </form>

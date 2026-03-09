@@ -1110,6 +1110,62 @@ export default function ProjectPlanPage() {
                                   />
                                 </div>
                               </>
+                            ) : isAssigned && shot.sceneStorageId ? (
+                              <>
+                                <div className="flex items-center justify-center gap-2 flex-wrap">
+                                  <SceneThumbnail storageId={shot.sceneStorageId} />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setReplaceModalShotId(shot._id)}
+                                  >
+                                    Replace
+                                  </Button>
+                                </div>
+                                <div className="space-y-2 mt-2">
+                                  {(!shot.strongMoments || shot.strongMoments.length === 0) && (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      onClick={analyzingShotId === shot._id ? undefined : () => handleGetAIAnalysis(shot._id)}
+                                      disabled={analyzingShotId === shot._id}
+                                    >
+                                      {analyzingShotId === shot._id ? "Analyzing…" : "Get AI Analysis"}
+                                    </Button>
+                                  )}
+                                  {shot.strongMoments && shot.strongMoments.length > 0 ? (
+                                    <div>
+                                      <p className="text-xs font-medium text-foreground mb-1">Strong moments</p>
+                                      <ul className="text-xs text-muted-foreground space-y-0.5">
+                                        {shot.strongMoments.slice(0, 3).map((m, i) => (
+                                          <li key={i}>{m.reason}</li>
+                                        ))}
+                                        {shot.strongMoments.length > 3 ? <li>+{shot.strongMoments.length - 3} more</li> : null}
+                                      </ul>
+                                    </div>
+                                  ) : null}
+                                  {shot.sceneFeedback ? (
+                                    <div>
+                                      <p className="text-xs font-medium text-foreground mb-1">AI feedback</p>
+                                      <p className="text-xs text-muted-foreground line-clamp-2">{shot.sceneFeedback.alignmentSummary}</p>
+                                    </div>
+                                  ) : null}
+                                </div>
+                                <div className="space-y-1 mt-3">
+                                  <label className="text-xs font-medium text-foreground">Notes &amp; reminders</label>
+                                  <textarea
+                                    defaultValue={shot.sceneNotes ?? ""}
+                                    onBlur={(e) => {
+                                      const v = e.target.value;
+                                      if (v !== (shot.sceneNotes ?? ""))
+                                        updateShot({ shotId: shot._id, sceneNotes: v });
+                                    }}
+                                    placeholder="What to do or reminders for this scene…"
+                                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm min-h-[72px] resize-y"
+                                  />
+                                </div>
+                              </>
                             ) : savedState && (savedState.isUploading || savedState.uploadedStorageId || savedState.recordedBlobUrl) ? (
                               <>
                                 <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
