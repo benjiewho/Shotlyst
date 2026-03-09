@@ -89,7 +89,9 @@ export function useShotCapture({
 
   // Auto-upload when we have a blob and a shot: upload + saveToLibrary, then store storageId (once per blob)
   useEffect(() => {
-    if (!recordedBlob || !currentShot || !projectId) return;
+    if (!recordedBlob || !projectId) return;
+    const shotId = captureShotIdRef.current;
+    if (!shotId) return;
     if (uploadStartedForBlobRef.current === recordedBlob) return;
     uploadStartedForBlobRef.current = recordedBlob;
     retakenRef.current = false;
@@ -140,10 +142,9 @@ export function useShotCapture({
           await new Promise((r) => setTimeout(r, 100));
         }
         const duration = Math.round(recordedDurationRef.current);
-        const shotIdForSave = captureShotIdRef.current ?? currentShot._id;
         await saveToLibrary({
           projectId,
-          shotId: shotIdForSave,
+          shotId,
           storageId,
           duration: duration > 0 ? duration : 0,
         });
@@ -164,9 +165,9 @@ export function useShotCapture({
     return () => {
       cancelled = true;
     };
-    // currentShot identity intentionally narrowed to currentShot?._id to avoid re-upload on ref change
+    // Do not depend on currentShot: upload must complete in background when user switches scenes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordedBlob, currentShot?._id, projectId, generateUploadUrl, saveToLibrary]);
+  }, [recordedBlob, projectId, generateUploadUrl, saveToLibrary]);
 
   const confirmCapture = useCallback(async () => {
     const shotIdToLink = captureShotIdRef.current ?? currentShot?._id;
