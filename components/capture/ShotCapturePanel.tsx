@@ -37,6 +37,10 @@ export type ShotCapturePanelProps = {
   assignedVideoInLibrary?: boolean;
   /** Optional: show compact layout (e.g. inside plan card) */
   compact?: boolean;
+  /** When true, do not show "Open the camera to record this shot." */
+  hideInstructionText?: boolean;
+  /** Label for the primary (camera) button, e.g. "Add video" instead of "Open camera" */
+  primaryButtonLabel?: string;
 };
 
 export function ShotCapturePanel({
@@ -63,6 +67,8 @@ export function ShotCapturePanel({
   reviewVideoRef,
   assignedVideoInLibrary,
   compact,
+  hideInstructionText,
+  primaryButtonLabel = "Open camera",
 }: ShotCapturePanelProps) {
   if (!shot) return null;
 
@@ -71,9 +77,11 @@ export function ShotCapturePanel({
       <Card className={cn(compact && "border-0 shadow-none bg-muted/30")}>
         <CardContent className={cn("p-4", compact && "p-3")}>
           <div className="flex flex-col items-center justify-start gap-4 w-full">
-            <p className="text-sm text-muted-foreground text-center">
-              Open the camera to record this shot.
-            </p>
+            {!hideInstructionText && (
+              <p className="text-sm text-muted-foreground text-center">
+                Open the camera to record this shot.
+              </p>
+            )}
             <input
               ref={nativeCameraInputRef}
               type="file"
@@ -83,14 +91,14 @@ export function ShotCapturePanel({
               aria-label="Record video"
               onChange={onCameraFileChange}
             />
-            <div className="flex flex-col gap-2 w-full max-w-xs">
+            <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs justify-center">
               <Button
                 type="button"
                 size={compact ? "default" : "lg"}
                 className="min-h-11 min-h-[44px]"
                 onClick={onOpenCamera}
               >
-                Open camera
+                {primaryButtonLabel}
               </Button>
               <Button
                 type="button"
