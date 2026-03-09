@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useQuery, useMutation, useAction } from "convex/react";
+import { useParams, useSearchParams } from "next/navigation";
+import { useQuery, useMutation, useAction, useConvex } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,9 @@ import {
 import { cn } from "@/lib/utils";
 import { Trash2, GripVertical } from "lucide-react";
 import { ReplaceVideoModal } from "@/components/replace-video-modal";
+import { useShotCapture } from "@/components/capture/useShotCapture";
+import { ShotCapturePanel } from "@/components/capture/ShotCapturePanel";
+import { SwipeableCaptureArea } from "@/components/capture/SwipeableCaptureArea";
 import {
   DndContext,
   type DragEndEvent,
@@ -70,13 +73,19 @@ function SortableShotRow({
   updateShot,
   removeShot,
   onOpenReplaceModal,
+  isActive,
+  onSetActiveShot,
+  expandedContent,
 }: {
-  shot: { _id: Id<"shots">; title: string; description: string; shotCategory?: string | null; purpose?: string | null; status?: string; sceneStorageId?: Id<"_storage"> | null };
+  shot: { _id: Id<"shots">; title: string; description: string; shotCategory?: string | null; purpose?: string | null; status?: string; sceneStorageId?: Id<"_storage"> | null; order?: number; sceneDuration?: number | null; strongMoments?: { timestampSeconds: number; reason: string }[] | null; sceneFeedback?: { alignmentSummary: string; pros: string[]; cons: string[] } | null; sceneNotes?: string | null };
   index: number;
   projectId: Id<"projects">;
-  updateShot: (args: { shotId: Id<"shots">; title?: string; description?: string; shotCategory?: ShotCategoryValue }) => Promise<unknown>;
+  updateShot: (args: { shotId: Id<"shots">; title?: string; description?: string; shotCategory?: ShotCategoryValue; sceneNotes?: string }) => Promise<unknown>;
   removeShot: (args: { shotId: Id<"shots"> }) => Promise<unknown>;
   onOpenReplaceModal: (shotId: Id<"shots">) => void;
+  isActive?: boolean;
+  onSetActiveShot?: () => void;
+  expandedContent?: React.ReactNode;
 }) {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const {
@@ -101,7 +110,8 @@ function SortableShotRow({
         "flex flex-col gap-3 rounded-xl px-4 py-4",
         shot.status === "captured" && "bg-green-100 dark:bg-green-900/30",
         shot.status !== "captured" && !isDragging && "bg-primary/10 dark:bg-primary/20",
-        isDragging && "opacity-50"
+        isDragging && "opacity-50",
+        isActive && "ring-2 ring-primary ring-offset-2"
       )}
     >
       {/* Top row: drag handle (center), delete (right) */}
@@ -130,16 +140,20 @@ function SortableShotRow({
       </div>
 
       <div className="flex gap-3 items-start min-w-0">
-        <span
+        <button
+          type="button"
+          onClick={onSetActiveShot}
           className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium",
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium transition-colors",
             shot.status === "captured"
-              ? "bg-green-200 dark:bg-green-800 text-green-900 dark:text-green-100"
-              : "bg-primary text-primary-foreground"
+              ? "bg-green-200 dark:bg-green-800 text-green-900 dark:text-green-100 hover:ring-2 hover:ring-green-600"
+              : "bg-primary text-primary-foreground hover:ring-2 hover:ring-primary",
+            isActive && "ring-2 ring-offset-2 ring-primary"
           )}
+          aria-label={isActive ? "Selected for capture" : "Select to capture this shot"}
         >
           {index + 1}
-        </span>
+        </button>
         <div className="min-w-0 flex-1 space-y-2">
           <div>
             <label className="text-xs text-muted-foreground block mb-0.5">Shot type</label>
@@ -211,12 +225,19 @@ function SortableShotRow({
           </div>
         </div>
       </div>
+
+      {isActive && expandedContent != null && (
+        <div className="mt-2 border-t border-border pt-3">
+          {expandedContent}
+        </div>
+      )}
     </li>
   );
 }
 
 export default function ProjectPlanPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = params?.id as string | undefined;
   const projectId = id as Id<"projects"> | undefined;
 
@@ -235,11 +256,133 @@ export default function ProjectPlanPage() {
   const createOneShot = useMutation(api.shots.createOne);
   const reorderShots = useMutation(api.shots.reorderShots);
   const linkScene = useMutation(api.shots.linkScene);
+  const unassignShot = useMutation(api.shots.unassignShot);
   const generatePlan = useAction(api.ai.generatePlan);
   const analyzeStrongMoments = useAction(api.ai.analyzeVideoForStrongMoments);
+  const convex = useConvex();
   const [replaceModalShotId, setReplaceModalShotId] = useState<Id<"shots"> | null>(null);
   const regenerateHook = useAction(api.ai.regenerateHook);
   const regenerateStyle = useAction(api.ai.regenerateStyle);
+
+  const sortedShots = useMemo(
+    () => (shots ? [...shots].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) : []),
+    [shots]
+  );
+  const firstUnassignedShot = useMemo(
+    () => sortedShots.find((s) => s.status !== "captured") ?? sortedShots[0] ?? null,
+    [sortedShots]
+  );
+  const [activeShotId, setActiveShotId] = useState<Id<"shots"> | null>(null);
+  const hasInitializedActiveRef = useRef(false);
+
+  useEffect(() => {
+    if (!projectId || !shots?.length) {
+      hasInitializedActiveRef.current = false;
+      return;
+    }
+    if (hasInitializedActiveRef.current) return;
+    const shotParam = searchParams.get("shot");
+    const paramId = shotParam as Id<"shots"> | null;
+    if (paramId && shots.some((s) => s._id === paramId)) {
+      setActiveShotId(paramId);
+    } else {
+      setActiveShotId(firstUnassignedShot?._id ?? shots[0]._id);
+    }
+    hasInitializedActiveRef.current = true;
+  }, [projectId, shots, searchParams, firstUnassignedShot]);
+
+  const activeShot = useMemo(
+    () => (activeShotId ? sortedShots.find((s) => s._id === activeShotId) ?? null : null),
+    [activeShotId, sortedShots]
+  );
+  const activeIndex = useMemo(
+    () => (activeShotId ? sortedShots.findIndex((s) => s._id === activeShotId) : -1),
+    [activeShotId, sortedShots]
+  );
+  const nextShotId = useMemo(() => {
+    if (sortedShots.length === 0) return null;
+    const nextIndex = (activeIndex + 1 + sortedShots.length) % sortedShots.length;
+    return sortedShots[nextIndex]._id;
+  }, [sortedShots, activeIndex]);
+  const prevShotId = useMemo(() => {
+    if (sortedShots.length === 0) return null;
+    const prevIndex = (activeIndex - 1 + sortedShots.length) % sortedShots.length;
+    return sortedShots[prevIndex]._id;
+  }, [sortedShots, activeIndex]);
+  const nextUnassignedAfterActive = useMemo(() => {
+    if (!activeShot) return firstUnassignedShot;
+    const after = sortedShots.filter((s) => (s.order ?? 0) > (activeShot.order ?? 0) && s.status !== "captured");
+    return after[0] ?? sortedShots.find((s) => s.status !== "captured") ?? null;
+  }, [sortedShots, activeShot, firstUnassignedShot]);
+
+  const {
+    recordedBlob,
+    recordedBlobUrl,
+    isUploading,
+    uploadProgress,
+    error,
+    setError,
+    uploadedStorageId,
+    confirmCapture,
+    retake,
+    handleNativeCameraFile,
+  } = useShotCapture({
+    currentShot: activeShot,
+    projectId,
+    onAssigned: useCallback(() => {
+      if (nextUnassignedAfterActive) setActiveShotId(nextUnassignedAfterActive._id);
+      else setActiveShotId(sortedShots[0]?._id ?? null);
+    }, [nextUnassignedAfterActive, sortedShots]),
+  });
+
+  const sceneUrl = useQuery(
+    api.shots.getSceneUrl,
+    activeShot?.status === "captured" && activeShot?.sceneStorageId
+      ? { storageId: activeShot.sceneStorageId }
+      : "skip"
+  );
+  const mediaForActiveShot = useQuery(
+    api.media.listByShot,
+    activeShot?.status === "captured" && activeShot?._id ? { shotId: activeShot._id } : "skip"
+  );
+  const assignedVideoInLibrary =
+    !!activeShot?.sceneStorageId &&
+    !!mediaForActiveShot?.some((m) => m.storageId === activeShot.sceneStorageId);
+
+  const captureMode: "pre" | "post" | "assigned" =
+    recordedBlob
+      ? "post"
+      : activeShot?.status === "captured" && activeShot?.sceneStorageId && sceneUrl
+        ? "assigned"
+        : "pre";
+
+  const [revealedFeedbackShotId, setRevealedFeedbackShotId] = useState<Id<"shots"> | null>(null);
+  const nativeCameraInputRef = useRef<HTMLInputElement>(null);
+  const reviewVideoRef = useRef<HTMLVideoElement>(null);
+  const analysisTriggeredForShotsRef = useRef<Set<Id<"shots">>>(new Set());
+  const prevActiveShotIdRef = useRef<Id<"shots"> | null>(null);
+
+  useEffect(() => {
+    const prev = prevActiveShotIdRef.current;
+    prevActiveShotIdRef.current = activeShotId;
+    if (prev !== null && prev !== activeShotId) retake();
+  }, [activeShotId, retake]);
+
+  useEffect(() => {
+    if (!activeShot?.sceneStorageId) {
+      if (activeShot?._id) analysisTriggeredForShotsRef.current.delete(activeShot._id);
+      return;
+    }
+    const hasNoStrongMoments = !activeShot?.strongMoments || activeShot.strongMoments.length === 0;
+    if (!hasNoStrongMoments) return;
+    if (analysisTriggeredForShotsRef.current.has(activeShot._id)) return;
+    analysisTriggeredForShotsRef.current.add(activeShot._id);
+    void (async () => {
+      await new Promise((r) => setTimeout(r, 2000));
+      const videoUrl = await convex.query(api.shots.getSceneUrlByShotId, { shotId: activeShot._id });
+      await analyzeStrongMoments({ shotId: activeShot._id, videoUrl: videoUrl ?? undefined });
+    })().catch(() => {});
+  }, [activeShot?._id, activeShot?.sceneStorageId, activeShot?.strongMoments, analyzeStrongMoments, convex]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -532,6 +675,65 @@ export default function ProjectPlanPage() {
                         updateShot={updateShot}
                         removeShot={removeShot}
                         onOpenReplaceModal={(id) => setReplaceModalShotId(id)}
+                        isActive={activeShotId === shot._id}
+                        onSetActiveShot={() => setActiveShotId(shot._id)}
+                        expandedContent={
+                          activeShotId === shot._id && activeShot ? (
+                            <>
+                              <SwipeableCaptureArea
+                                onSwipeLeft={() => prevShotId && setActiveShotId(prevShotId)}
+                                onSwipeRight={() => nextShotId && setActiveShotId(nextShotId)}
+                                className="mb-3"
+                              >
+                                <ShotCapturePanel
+                                  mode={captureMode}
+                                  shot={activeShot}
+                                  recordedBlobUrl={recordedBlobUrl}
+                                  isUploading={isUploading}
+                                  uploadProgress={uploadProgress}
+                                  error={error}
+                                  canAssign={!!uploadedStorageId}
+                                  onRetake={retake}
+                                  onAssign={confirmCapture}
+                                  nativeCameraInputRef={nativeCameraInputRef}
+                                  onOpenCamera={() => nativeCameraInputRef.current?.click()}
+                                  onCameraFileChange={handleNativeCameraFile}
+                                  onOpenGallery={() => setReplaceModalShotId(activeShotId)}
+                                  sceneUrl={captureMode === "assigned" ? sceneUrl ?? null : null}
+                                  onReplace={() => setReplaceModalShotId(activeShotId)}
+                                  onUnassign={async () => {
+                                    if (!activeShot?._id) return;
+                                    try {
+                                      await unassignShot({ shotId: activeShot._id });
+                                    } catch (err) {
+                                      setError(err instanceof Error ? err.message : "Unassign failed.");
+                                    }
+                                  }}
+                                  strongMoments={activeShot?.strongMoments ?? null}
+                                  sceneFeedback={activeShot?.sceneFeedback ?? null}
+                                  revealedFeedback={revealedFeedbackShotId === activeShot?._id}
+                                  onRevealFeedback={() => activeShot?._id && setRevealedFeedbackShotId(activeShot._id)}
+                                  reviewVideoRef={reviewVideoRef}
+                                  assignedVideoInLibrary={assignedVideoInLibrary}
+                                  compact
+                                />
+                              </SwipeableCaptureArea>
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-foreground">Notes &amp; reminders</label>
+                                <textarea
+                                  defaultValue={activeShot.sceneNotes ?? ""}
+                                  onBlur={(e) => {
+                                    const v = e.target.value;
+                                    if (v !== (activeShot.sceneNotes ?? ""))
+                                      updateShot({ shotId: activeShot._id, sceneNotes: v });
+                                  }}
+                                  placeholder="What to do or reminders for this scene…"
+                                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm min-h-[72px] resize-y"
+                                />
+                              </div>
+                            </>
+                          ) : undefined
+                        }
                       />
                     ))}
                   </ol>
@@ -544,11 +746,15 @@ export default function ProjectPlanPage() {
       </div>
 
       <div className="mt-8 flex flex-col gap-3">
-        <Button className="w-full min-h-12" size="lg" asChild>
-          <Link href={`/project/${project._id}/capture`}>Let&apos;s Capture</Link>
+        <Button
+          className="w-full min-h-12"
+          size="lg"
+          onClick={() => firstUnassignedShot && setActiveShotId(firstUnassignedShot._id)}
+        >
+          Capture
         </Button>
-        <Button variant="outline" className="w-full min-h-12" size="lg" disabled aria-disabled="true" title="Coming soon">
-          View report
+        <Button variant="outline" className="w-full min-h-12" size="lg" asChild>
+          <Link href={`/project/${project._id}/report`}>View report</Link>
         </Button>
       </div>
 

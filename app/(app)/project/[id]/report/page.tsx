@@ -208,7 +208,7 @@ export default function ReportPage() {
                     </p>
                     {s.status !== "captured" && (
                       <Button variant="outline" size="sm" className="mt-1 w-full sm:w-auto" asChild>
-                        <Link href={`/project/${project._id}/capture?shot=${s._id}`}>
+                        <Link href={`/project/${project._id}?shot=${s._id}`}>
                           Capture this shot
                         </Link>
                       </Button>
@@ -227,7 +227,7 @@ export default function ReportPage() {
             variant="outline"
             asChild
           >
-            <Link href={`/project/${project._id}/capture`}>Recapture Scenes</Link>
+            <Link href={`/project/${project._id}`}>Recapture Scenes</Link>
           </Button>
           <Button
             className="w-full min-h-12"
