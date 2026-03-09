@@ -21,7 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Trash2, GripVertical } from "lucide-react";
 import { ReplaceVideoModal } from "@/components/replace-video-modal";
-import { useShotCapture } from "@/components/capture/useShotCapture";
+import { useShotCapture, type CaptureStateSnapshot } from "@/components/capture/useShotCapture";
 import { ShotCapturePanel } from "@/components/capture/ShotCapturePanel";
 import { SwipeableCaptureArea } from "@/components/capture/SwipeableCaptureArea";
 import {
@@ -366,6 +366,11 @@ export default function ProjectPlanPage() {
     return () => clearTimeout(t);
   }, [newlyAddedShotId]);
 
+  const [captureStateByShot, setCaptureStateByShot] = useState<Record<string, CaptureStateSnapshot>>({});
+  const onCaptureStateChange = useCallback((shotId: Id<"shots">, state: CaptureStateSnapshot) => {
+    setCaptureStateByShot((prev) => ({ ...prev, [shotId]: state }));
+  }, []);
+
   const {
     recordedBlob,
     recordedBlobUrl,
@@ -374,6 +379,7 @@ export default function ProjectPlanPage() {
     error,
     setError,
     uploadedStorageId,
+    captureShotId,
     confirmCapture,
     retake,
     handleNativeCameraFile,
@@ -384,7 +390,22 @@ export default function ProjectPlanPage() {
       if (nextUnassignedAfterActive) setActiveShotId(nextUnassignedAfterActive._id);
       else setActiveShotId(sortedShots[0]?._id ?? null);
     }, [nextUnassignedAfterActive, sortedShots]),
+    onCaptureStateChange,
   });
+
+  const library = useQuery(api.media.listLibrary);
+  const libraryProject = useMemo(
+    () => (library && projectId ? library.find((p) => p.projectId === projectId) : null),
+    [library, projectId]
+  );
+  const mediaCountByShotId = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (!libraryProject) return map;
+    for (const s of libraryProject.shots) {
+      map[s.shotId] = s.media.length;
+    }
+    return map;
+  }, [libraryProject]);
 
   const sceneUrl = useQuery(
     api.shots.getSceneUrl,
@@ -411,14 +432,7 @@ export default function ProjectPlanPage() {
   const nativeCameraInputRef = useRef<HTMLInputElement>(null);
   const reviewVideoRef = useRef<HTMLVideoElement>(null);
   const analysisTriggeredForShotsRef = useRef<Set<Id<"shots">>>(new Set());
-  const prevActiveShotIdRef = useRef<Id<"shots"> | null>(null);
   const pendingOpenCameraRef = useRef(false);
-
-  useEffect(() => {
-    const prev = prevActiveShotIdRef.current;
-    prevActiveShotIdRef.current = activeShotId;
-    if (prev !== null && prev !== activeShotId) retake();
-  }, [activeShotId, retake]);
 
   useEffect(() => {
     if (!pendingOpenCameraRef.current || !activeShotId) return;
@@ -912,11 +926,13 @@ export default function ProjectPlanPage() {
             onChange={handleNativeCameraFile}
           />
           <header className="flex-shrink-0 flex flex-row items-center justify-between gap-2 border-b border-border px-4 py-3">
-            <span className="text-base font-semibold">Shot list</span>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground tabular-nums">
+            <div>
+              <p className="text-base font-semibold text-foreground">Shot list</p>
+              <p className="text-xs text-muted-foreground tabular-nums">
                 {sortedShots.filter((s) => s.status === "captured").length} / {sortedShots.length} captured
-              </span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
               <div className="flex rounded-lg border border-input bg-muted/50 p-0.5">
                 <button
                   type="button"
@@ -932,6 +948,11 @@ export default function ProjectPlanPage() {
                   Capture
                 </button>
               </div>
+              {projectId && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/library?projectId=${projectId}`}>Library</Link>
+                </Button>
+              )}
             </div>
           </header>
           <SwipeableCaptureArea
@@ -949,7 +970,10 @@ export default function ProjectPlanPage() {
                 >
                   {sortedShots.map((shot) => {
                     const isAssigned = shot.status === "captured";
-                    const hasVideoInProgress = activeShotId === shot._id && (recordedBlob || isUploading);
+                    const savedState = captureStateByShot[shot._id];
+                    const hasVideoInProgressFromHook = activeShotId === shot._id && captureShotId === shot._id && (recordedBlob || isUploading);
+                    const hasVideoInProgressFromMap = savedState && (savedState.isUploading || savedState.recordedBlobUrl || savedState.uploadedStorageId);
+                    const hasVideoInProgress = hasVideoInProgressFromHook || !!hasVideoInProgressFromMap;
                     const hasVideo = isAssigned || !!shot.sceneStorageId || hasVideoInProgress;
                     const cardBg = isAssigned
                       ? "bg-green-100 dark:bg-green-900/30"
@@ -957,6 +981,8 @@ export default function ProjectPlanPage() {
                         ? "bg-amber-100 dark:bg-amber-900/30"
                         : "bg-violet-100 dark:bg-violet-900/30";
                     const reportLabel = isAssigned ? "Scene Task: Video Assigned" : hasVideo ? "Scene Task: Videos Captured" : "Scene Task: Not Captured";
+                    const isActiveCard = activeShotId === shot._id;
+                    const useHookStateForActive = isActiveCard && captureShotId === shot._id;
                     return (
                       <div
                         key={shot._id}
@@ -967,50 +993,144 @@ export default function ProjectPlanPage() {
                           <p className="text-xs text-muted-foreground">
                             Scene {(shot.order ?? 0) + 1} of {sortedShots.length}
                           </p>
-                          <p className="text-xs font-medium text-foreground">{reportLabel}</p>
+                          <p className="text-sm font-medium text-foreground">{reportLabel}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {isAssigned ? "1 assigned" : (mediaCountByShotId[shot._id] ?? 0) > 0 ? `${mediaCountByShotId[shot._id]} video${(mediaCountByShotId[shot._id] ?? 0) === 1 ? "" : "s"}` : "0 videos"}
+                          </p>
                           <p className="text-xs text-muted-foreground">
                             Shot type: {SHOT_CATEGORIES.find((c) => c.value === shot.shotCategory)?.label ?? shot.shotCategory ?? "—"}
                           </p>
-                          <p className="text-sm font-medium text-foreground">{shot.title}</p>
+                          <p className="text-sm font-semibold text-foreground">{shot.title}</p>
                           {shot.description ? (
-                            <p className="text-xs text-muted-foreground line-clamp-3">{shot.description}</p>
+                            <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">{shot.description}</p>
                           ) : null}
-                          {activeShotId === shot._id ? (
+                          {isActiveCard ? (
+                            useHookStateForActive ? (
+                              <>
+                                <ShotCapturePanel
+                                  mode={captureMode}
+                                  shot={activeShot}
+                                  recordedBlobUrl={recordedBlobUrl}
+                                  isUploading={isUploading}
+                                  uploadProgress={uploadProgress}
+                                  error={error}
+                                  canAssign={!!uploadedStorageId}
+                                  onRetake={retake}
+                                  onAssign={confirmCapture}
+                                  nativeCameraInputRef={nativeCameraInputRef}
+                                  onOpenCamera={() => nativeCameraInputRef.current?.click()}
+                                  onCameraFileChange={handleNativeCameraFile}
+                                  onOpenGallery={() => setReplaceModalShotId(shot._id)}
+                                  sceneUrl={captureMode === "assigned" ? sceneUrl ?? null : null}
+                                  onReplace={() => setReplaceModalShotId(shot._id)}
+                                  onUnassign={async () => {
+                                    if (!shot._id) return;
+                                    try {
+                                      await unassignShot({ shotId: shot._id });
+                                    } catch (err) {
+                                      setError(err instanceof Error ? err.message : "Unassign failed.");
+                                    }
+                                  }}
+                                  strongMoments={shot.strongMoments ?? null}
+                                  sceneFeedback={shot.sceneFeedback ?? null}
+                                  revealedFeedback={revealedFeedbackShotId === shot._id}
+                                  onRevealFeedback={() => setRevealedFeedbackShotId(shot._id)}
+                                  reviewVideoRef={reviewVideoRef}
+                                  assignedVideoInLibrary={assignedVideoInLibrary}
+                                  compact
+                                  hideInstructionText
+                                  primaryButtonLabel="Add video"
+                                />
+                                <div className="space-y-1 mt-3">
+                                  <label className="text-xs font-medium text-foreground">Notes &amp; reminders</label>
+                                  <textarea
+                                    defaultValue={shot.sceneNotes ?? ""}
+                                    onBlur={(e) => {
+                                      const v = e.target.value;
+                                      if (v !== (shot.sceneNotes ?? ""))
+                                        updateShot({ shotId: shot._id, sceneNotes: v });
+                                    }}
+                                    placeholder="What to do or reminders for this scene…"
+                                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm min-h-[72px] resize-y"
+                                  />
+                                </div>
+                              </>
+                            ) : savedState && (savedState.isUploading || savedState.uploadedStorageId || savedState.recordedBlobUrl) ? (
+                              <>
+                                <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                                  {savedState.recordedBlobUrl && (
+                                    <video src={savedState.recordedBlobUrl} controls playsInline className="w-full max-h-[200px] rounded object-contain bg-black" />
+                                  )}
+                                  {savedState.isUploading && (
+                                    <div className="space-y-1">
+                                      <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                                        <div className="h-full bg-primary transition-all" style={{ width: `${savedState.uploadProgress ?? 0}%` }} />
+                                      </div>
+                                      <p className="text-xs text-muted-foreground">Uploading… {savedState.uploadProgress ?? 0}%</p>
+                                    </div>
+                                  )}
+                                  {savedState.uploadedStorageId && !savedState.isUploading && (
+                                    <p className="text-sm text-muted-foreground">Video ready. Assign from this card when it has focus.</p>
+                                  )}
+                                  {savedState.error && <p className="text-sm text-destructive">{savedState.error}</p>}
+                                </div>
+                                <div className="space-y-1 mt-3">
+                                  <label className="text-xs font-medium text-foreground">Notes &amp; reminders</label>
+                                  <textarea
+                                    defaultValue={shot.sceneNotes ?? ""}
+                                    onBlur={(e) => {
+                                      const v = e.target.value;
+                                      if (v !== (shot.sceneNotes ?? ""))
+                                        updateShot({ shotId: shot._id, sceneNotes: v });
+                                    }}
+                                    placeholder="What to do or reminders for this scene…"
+                                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm min-h-[72px] resize-y"
+                                  />
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs">
+                                  <Button
+                                    type="button"
+                                    size="default"
+                                    className="min-h-11 min-h-[44px]"
+                                    onClick={() => {
+                                      pendingOpenCameraRef.current = true;
+                                      setActiveShotId(shot._id);
+                                    }}
+                                  >
+                                    Add video
+                                  </Button>
+                                  <Button type="button" variant="outline" size="default" className="min-h-11 min-h-[44px]" onClick={() => setReplaceModalShotId(shot._id)} aria-label="Choose video from gallery">
+                                    Gallery
+                                  </Button>
+                                </div>
+                                <div className="space-y-1 mt-3">
+                                  <label className="text-xs font-medium text-foreground">Notes &amp; reminders</label>
+                                  <textarea
+                                    defaultValue={shot.sceneNotes ?? ""}
+                                    onBlur={(e) => {
+                                      const v = e.target.value;
+                                      if (v !== (shot.sceneNotes ?? ""))
+                                        updateShot({ shotId: shot._id, sceneNotes: v });
+                                    }}
+                                    placeholder="What to do or reminders for this scene…"
+                                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm min-h-[72px] resize-y"
+                                  />
+                                </div>
+                              </>
+                            )
+                          ) : savedState && (savedState.isUploading || savedState.recordedBlobUrl || savedState.uploadedStorageId) ? (
                             <>
-                              <ShotCapturePanel
-                                mode={captureMode}
-                                shot={activeShot}
-                                recordedBlobUrl={recordedBlobUrl}
-                                isUploading={isUploading}
-                                uploadProgress={uploadProgress}
-                                error={error}
-                                canAssign={!!uploadedStorageId}
-                                onRetake={retake}
-                                onAssign={confirmCapture}
-                                nativeCameraInputRef={nativeCameraInputRef}
-                                onOpenCamera={() => nativeCameraInputRef.current?.click()}
-                                onCameraFileChange={handleNativeCameraFile}
-                                onOpenGallery={() => setReplaceModalShotId(shot._id)}
-                                sceneUrl={captureMode === "assigned" ? sceneUrl ?? null : null}
-                                onReplace={() => setReplaceModalShotId(shot._id)}
-                                onUnassign={async () => {
-                                  if (!shot._id) return;
-                                  try {
-                                    await unassignShot({ shotId: shot._id });
-                                  } catch (err) {
-                                    setError(err instanceof Error ? err.message : "Unassign failed.");
-                                  }
-                                }}
-                                strongMoments={shot.strongMoments ?? null}
-                                sceneFeedback={shot.sceneFeedback ?? null}
-                                revealedFeedback={revealedFeedbackShotId === shot._id}
-                                onRevealFeedback={() => setRevealedFeedbackShotId(shot._id)}
-                                reviewVideoRef={reviewVideoRef}
-                                assignedVideoInLibrary={assignedVideoInLibrary}
-                                compact
-                                hideInstructionText
-                                primaryButtonLabel="Add video"
-                              />
+                              <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                                {savedState.isUploading && (
+                                  <p className="text-sm text-muted-foreground">Uploading… {savedState.uploadProgress ?? 0}%</p>
+                                )}
+                                {savedState.uploadedStorageId && !savedState.isUploading && (
+                                  <p className="text-sm text-muted-foreground">Video ready — swipe here to assign.</p>
+                                )}
+                              </div>
                               <div className="space-y-1 mt-3">
                                 <label className="text-xs font-medium text-foreground">Notes &amp; reminders</label>
                                 <textarea

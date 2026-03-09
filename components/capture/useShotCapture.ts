@@ -23,14 +23,24 @@ export type ShotForCapture = {
   } | null;
 };
 
+export type CaptureStateSnapshot = {
+  recordedBlobUrl: string | null;
+  isUploading: boolean;
+  uploadProgress: number | null;
+  uploadedStorageId: Id<"_storage"> | null;
+  error: string | null;
+};
+
 export function useShotCapture({
   currentShot,
   projectId,
   onAssigned,
+  onCaptureStateChange,
 }: {
   currentShot: ShotForCapture | null;
   projectId: Id<"projects"> | undefined;
   onAssigned?: () => void;
+  onCaptureStateChange?: (shotId: Id<"shots">, state: CaptureStateSnapshot) => void;
 }) {
   const convex = useConvex();
   const generateUploadUrl = useMutation(api.shots.generateUploadUrl);
@@ -49,10 +59,14 @@ export function useShotCapture({
   const retakenRef = useRef(false);
   const recordedDurationRef = useRef(0);
   const uploadStartedForBlobRef = useRef<Blob | null>(null);
+  /** Shot this capture belongs to (set when blob is set); used for saveToLibrary/linkScene when user swipes away */
+  const captureShotIdRef = useRef<Id<"shots"> | null>(null);
 
   recordedDurationRef.current = recordedDuration;
 
-  // Create blob URL when we have a blob
+  const captureShotId = recordedBlob || isUploading || uploadedStorageId ? captureShotIdRef.current : null;
+
+  // Create blob URL when we have a blob; pin captureShotId to the shot that was active when recording started
   useEffect(() => {
     if (!recordedBlob) {
       if (recordedBlobUrl) {
@@ -62,6 +76,7 @@ export function useShotCapture({
       uploadStartedForBlobRef.current = null;
       return;
     }
+    if (currentShot) captureShotIdRef.current = currentShot._id;
     const url = URL.createObjectURL(recordedBlob);
     setRecordedBlobUrl(url);
     return () => {
@@ -125,9 +140,10 @@ export function useShotCapture({
           await new Promise((r) => setTimeout(r, 100));
         }
         const duration = Math.round(recordedDurationRef.current);
+        const shotIdForSave = captureShotIdRef.current ?? currentShot._id;
         await saveToLibrary({
           projectId,
-          shotId: currentShot._id,
+          shotId: shotIdForSave,
           storageId,
           duration: duration > 0 ? duration : 0,
         });
@@ -153,14 +169,16 @@ export function useShotCapture({
   }, [recordedBlob, currentShot?._id, projectId, generateUploadUrl, saveToLibrary]);
 
   const confirmCapture = useCallback(async () => {
-    if (!currentShot || !uploadedStorageId) return;
+    const shotIdToLink = captureShotIdRef.current ?? currentShot?._id;
+    if (!shotIdToLink || !uploadedStorageId) return;
     setError(null);
     try {
       await linkScene({
-        shotId: currentShot._id,
+        shotId: shotIdToLink,
         storageId: uploadedStorageId,
         duration: Math.round(recordedDuration),
       });
+      captureShotIdRef.current = null;
       setRecordedBlob(null);
       setRecordedDuration(0);
       setUploadedStorageId(null);
@@ -171,17 +189,17 @@ export function useShotCapture({
       onAssigned?.();
       await new Promise((r) => setTimeout(r, 2000));
       const videoUrl = await convex.query(api.shots.getSceneUrlByShotId, {
-        shotId: currentShot._id,
+        shotId: shotIdToLink,
       });
       analyzeStrongMoments({
-        shotId: currentShot._id,
+        shotId: shotIdToLink,
         videoUrl: videoUrl ?? undefined,
       }).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Assign failed.");
     }
   }, [
-    currentShot,
+    currentShot?._id,
     uploadedStorageId,
     recordedDuration,
     recordedBlobUrl,
@@ -194,11 +212,25 @@ export function useShotCapture({
   const retake = useCallback(() => {
     retakenRef.current = true;
     uploadStartedForBlobRef.current = null;
+    captureShotIdRef.current = null;
     setRecordedBlob(null);
     setRecordedDuration(0);
     setUploadedStorageId(null);
     setError(null);
   }, []);
+
+  // Notify parent of state changes for per-shot persistence when user swipes away
+  useEffect(() => {
+    const shotId = captureShotIdRef.current;
+    if (!shotId || !onCaptureStateChange) return;
+    onCaptureStateChange(shotId, {
+      recordedBlobUrl,
+      isUploading,
+      uploadProgress,
+      uploadedStorageId,
+      error,
+    });
+  }, [recordedBlobUrl, isUploading, uploadProgress, uploadedStorageId, error, onCaptureStateChange]);
 
   const handleNativeCameraFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -225,6 +257,7 @@ export function useShotCapture({
     error,
     setError,
     uploadedStorageId,
+    captureShotId,
     confirmCapture,
     retake,
     handleNativeCameraFile,

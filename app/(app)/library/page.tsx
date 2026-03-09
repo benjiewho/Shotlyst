@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useAction, useConvex } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -197,6 +198,7 @@ function MediaThumbnail({
 }
 
 export default function LibraryPage() {
+  const searchParams = useSearchParams();
   const library = useQuery(api.media.listLibrary);
   const convex = useConvex();
   const linkScene = useMutation(api.shots.linkScene);
@@ -205,6 +207,13 @@ export default function LibraryPage() {
   const removeMedia = useMutation(api.media.remove);
   const [assigningMediaId, setAssigningMediaId] = useState<Id<"media"> | null>(null);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+
+  const projectIdFromUrl = searchParams.get("projectId");
+  useEffect(() => {
+    if (projectIdFromUrl) {
+      setExpandedProjects((prev) => new Set(prev).add(projectIdFromUrl));
+    }
+  }, [projectIdFromUrl]);
 
   if (!hasConvex) {
     return (
