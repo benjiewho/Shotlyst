@@ -66,6 +66,28 @@ function SceneThumbnail({ storageId }: { storageId: Id<"_storage"> }) {
   );
 }
 
+function ReorderSheetItem({ shot, index }: { shot: { _id: Id<"shots">; title: string }; index: number }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: shot._id });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2",
+        isDragging && "opacity-50 shadow"
+      )}
+    >
+      <span className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground" {...attributes} {...listeners} aria-label="Drag to reorder">
+        <GripVertical className="h-4 w-4" />
+      </span>
+      <span className="text-sm font-medium truncate flex-1">
+        {index + 1}. {shot.title || "Untitled"}
+      </span>
+    </li>
+  );
+}
+
 function SortableShotRow({
   shot,
   index,
@@ -79,6 +101,7 @@ function SortableShotRow({
   isEditorMode,
   unassignedEditorContent,
   editorModeNotes,
+  onOpenReorder,
 }: {
   shot: { _id: Id<"shots">; title: string; description: string; shotCategory?: string | null; purpose?: string | null; status?: string; sceneStorageId?: Id<"_storage"> | null; order?: number; sceneDuration?: number | null; strongMoments?: { timestampSeconds: number; reason: string }[] | null; sceneFeedback?: { alignmentSummary: string; pros: string[]; cons: string[] } | null; sceneNotes?: string | null };
   index: number;
@@ -92,6 +115,7 @@ function SortableShotRow({
   isEditorMode?: boolean;
   unassignedEditorContent?: React.ReactNode;
   editorModeNotes?: React.ReactNode;
+  onOpenReorder?: () => void;
 }) {
   const isUnassigned = shot.status !== "captured";
   const {
@@ -112,6 +136,7 @@ function SortableShotRow({
     <li
       ref={setNodeRef}
       style={style}
+      data-shot-id={shot._id}
       className={cn(
         "flex flex-col gap-3 rounded-xl px-4 py-4",
         shot.status === "captured" && "bg-green-100 dark:bg-green-900/30",
@@ -139,9 +164,12 @@ function SortableShotRow({
         <button
           type="button"
           className="justify-self-center touch-none p-1.5 rounded cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground hover:bg-muted/80"
-          aria-label="Drag to reorder"
-          {...attributes}
-          {...listeners}
+          aria-label="Reorder scenes"
+          onClick={(e) => {
+            e.preventDefault();
+            onOpenReorder?.();
+          }}
+          {...(onOpenReorder ? {} : { ...attributes, ...listeners })}
         >
           <GripVertical className="h-4 w-4" />
         </button>
@@ -272,6 +300,8 @@ export default function ProjectPlanPage() {
   const convex = useConvex();
   const [replaceModalShotId, setReplaceModalShotId] = useState<Id<"shots"> | null>(null);
   const [shotListViewMode, setShotListViewMode] = useState<"editor" | "capture">("editor");
+  const [reorderOpen, setReorderOpen] = useState(false);
+  const [newlyAddedShotId, setNewlyAddedShotId] = useState<Id<"shots"> | null>(null);
   const regenerateHook = useAction(api.ai.regenerateHook);
   const regenerateStyle = useAction(api.ai.regenerateStyle);
 
@@ -325,6 +355,16 @@ export default function ProjectPlanPage() {
     const after = sortedShots.filter((s) => (s.order ?? 0) > (activeShot.order ?? 0) && s.status !== "captured");
     return after[0] ?? sortedShots.find((s) => s.status !== "captured") ?? null;
   }, [sortedShots, activeShot, firstUnassignedShot]);
+
+  useEffect(() => {
+    if (!newlyAddedShotId) return;
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-shot-id="${newlyAddedShotId}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      setNewlyAddedShotId(null);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [newlyAddedShotId]);
 
   const {
     recordedBlob,
@@ -416,6 +456,22 @@ export default function ProjectPlanPage() {
     const newOrder = arrayMove(shotIds, oldIndex, newIndex);
     await reorderShots({ projectId, shotIds: newOrder });
   };
+
+  const handleReorderSheetDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!projectId || !over || active.id === over.id || !reorderSheetShotIds.length) return;
+    const oldIndex = reorderSheetShotIds.indexOf(active.id as Id<"shots">);
+    const newIndex = reorderSheetShotIds.indexOf(over.id as Id<"shots">);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const newOrder = arrayMove([...reorderSheetShotIds], oldIndex, newIndex);
+    await reorderShots({ projectId, shotIds: newOrder });
+    setReorderOpen(false);
+  };
+
+  const reorderSheetShotIds = useMemo(
+    () => (reorderOpen && sortedShots.length ? sortedShots.map((s) => s._id) : []),
+    [reorderOpen, sortedShots]
+  );
 
   const [editing, setEditing] = useState<EditField>(null);
   const [draftGoal, setDraftGoal] = useState("");
@@ -680,7 +736,7 @@ export default function ProjectPlanPage() {
                   size="sm"
                   onClick={async () => {
                     if (!projectId || shots === undefined) return;
-                    await createOneShot({
+                    const newShotId = await createOneShot({
                       projectId,
                       type: "nice",
                       shotCategory: "establishing_shot",
@@ -688,6 +744,7 @@ export default function ProjectPlanPage() {
                       description: "Add your notes here.",
                       order: shots.length,
                     });
+                    if (newShotId) setNewlyAddedShotId(newShotId);
                   }}
                 >
                   Add shot
@@ -738,6 +795,7 @@ export default function ProjectPlanPage() {
                         updateShot={updateShot}
                         removeShot={removeShot}
                         onOpenReplaceModal={(id) => setReplaceModalShotId(id)}
+                        onOpenReorder={() => setReorderOpen(true)}
                         isActive={activeShotId === shot._id && !!recordedBlob}
                         onSetActiveShot={() => setActiveShotId(shot._id)}
                         isEditorMode
@@ -856,6 +914,9 @@ export default function ProjectPlanPage() {
           <header className="flex-shrink-0 flex flex-row items-center justify-between gap-2 border-b border-border px-4 py-3">
             <span className="text-base font-semibold">Shot list</span>
             <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {sortedShots.filter((s) => s.status === "captured").length} / {sortedShots.length} captured
+              </span>
               <div className="flex rounded-lg border border-input bg-muted/50 p-0.5">
                 <button
                   type="button"
@@ -895,7 +956,7 @@ export default function ProjectPlanPage() {
                       : hasVideo
                         ? "bg-amber-100 dark:bg-amber-900/30"
                         : "bg-violet-100 dark:bg-violet-900/30";
-                    const reportLabel = isAssigned ? "Assigned" : hasVideo ? "In progress" : "Not captured";
+                    const reportLabel = isAssigned ? "Scene Task: Video Assigned" : hasVideo ? "Scene Task: Videos Captured" : "Scene Task: Not Captured";
                     return (
                       <div
                         key={shot._id}
@@ -907,6 +968,9 @@ export default function ProjectPlanPage() {
                             Scene {(shot.order ?? 0) + 1} of {sortedShots.length}
                           </p>
                           <p className="text-xs font-medium text-foreground">{reportLabel}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Shot type: {SHOT_CATEGORIES.find((c) => c.value === shot.shotCategory)?.label ?? shot.shotCategory ?? "—"}
+                          </p>
                           <p className="text-sm font-medium text-foreground">{shot.title}</p>
                           {shot.description ? (
                             <p className="text-xs text-muted-foreground line-clamp-3">{shot.description}</p>
@@ -987,6 +1051,28 @@ export default function ProjectPlanPage() {
               </div>
           </SwipeableCaptureArea>
           <p className="text-xs text-muted-foreground text-center py-2 flex-shrink-0 border-t border-border">Swipe left/right to change scene</p>
+        </div>
+      )}
+
+      {reorderOpen && sortedShots.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" onClick={() => setReorderOpen(false)}>
+          <div className="bg-background rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b flex items-center justify-between shrink-0">
+              <h3 className="font-semibold text-lg">Reorder scenes</h3>
+              <Button variant="ghost" size="sm" onClick={() => setReorderOpen(false)}>Done</Button>
+            </div>
+            <div className="overflow-auto flex-1 p-4">
+              <DndContext sensors={sensors} onDragEnd={handleReorderSheetDragEnd}>
+                <SortableContext items={reorderSheetShotIds} strategy={verticalListSortingStrategy}>
+                  <ol className="space-y-2">
+                    {sortedShots.map((shot, i) => (
+                      <ReorderSheetItem key={shot._id} shot={{ _id: shot._id, title: shot.title }} index={i} />
+                    ))}
+                  </ol>
+                </SortableContext>
+              </DndContext>
+            </div>
+          </div>
         </div>
       )}
 

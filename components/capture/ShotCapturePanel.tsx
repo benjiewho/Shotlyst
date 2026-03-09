@@ -122,7 +122,7 @@ export function ShotCapturePanel({
       <Card className={cn(compact && "border-0 shadow-none bg-muted/30")}>
         <CardContent className={cn("p-4", compact && "p-3")}>
           <div className="flex flex-1 flex-col items-center gap-4 w-full min-h-0 min-w-0">
-            <div className="w-full flex items-center justify-center flex-shrink-0 min-h-0 max-h-[45vh] min-h-[160px] overflow-hidden rounded-lg">
+            <div className="w-full flex items-center justify-center flex-shrink-0 min-h-0 max-h-[55vh] min-h-[200px] overflow-hidden rounded-lg">
               {recordedBlobUrl && (
                 <video
                   key={recordedBlobUrl}
@@ -158,7 +158,7 @@ export function ShotCapturePanel({
                 onClick={onRetake}
                 disabled={isUploading}
               >
-                Retake
+                Recapture
               </Button>
               <Button
                 className="flex-1 min-h-11 min-w-0 text-sm whitespace-normal break-words min-h-[44px]"
@@ -182,7 +182,7 @@ export function ShotCapturePanel({
           {sceneUrl ? (
             <div
               className="w-full flex items-center justify-center flex-shrink-0"
-              style={{ minHeight: "min(40vh, 280px)" }}
+              style={{ minHeight: "min(50vh, 320px)" }}
             >
               <video
                 ref={reviewVideoRef}
