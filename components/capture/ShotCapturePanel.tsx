@@ -31,8 +31,10 @@ export type ShotCapturePanelProps = {
   onUnassign: () => void;
   strongMoments: { timestampSeconds: number; reason: string }[] | null | undefined;
   sceneFeedback: ShotForCapture["sceneFeedback"];
-  revealedFeedback: boolean;
-  onRevealFeedback: () => void;
+  revealedFeedback?: boolean;
+  onRevealFeedback?: () => void;
+  onGetAIAnalysis?: () => void;
+  isAnalyzing?: boolean;
   reviewVideoRef: RefObject<HTMLVideoElement>;
   assignedVideoInLibrary?: boolean;
   /** Optional: show compact layout (e.g. inside plan card) */
@@ -64,6 +66,8 @@ export function ShotCapturePanel({
   sceneFeedback,
   revealedFeedback,
   onRevealFeedback,
+  onGetAIAnalysis,
+  isAnalyzing = false,
   reviewVideoRef,
   assignedVideoInLibrary,
   compact,
@@ -196,7 +200,12 @@ export function ShotCapturePanel({
               />
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground p-4">Video unavailable</p>
+            <div
+              className="w-full flex items-center justify-center flex-shrink-0 aspect-video rounded-lg bg-muted animate-pulse min-h-[200px]"
+              style={{ minHeight: "min(50vh, 320px)" }}
+            >
+              <span className="text-sm text-muted-foreground">Loading…</span>
+            </div>
           )}
           {assignedVideoInLibrary && (
             <p className="text-xs text-primary font-medium flex-shrink-0">Saved to library</p>
@@ -209,6 +218,18 @@ export function ShotCapturePanel({
               Unassign
             </Button>
           </div>
+          {onGetAIAnalysis && shot.sceneStorageId && (!strongMoments || strongMoments.length === 0) && (
+            <div className="w-full flex-shrink-0">
+              <Button
+                type="button"
+                size="sm"
+                onClick={isAnalyzing ? undefined : onGetAIAnalysis}
+                disabled={isAnalyzing}
+              >
+                {isAnalyzing ? "Analyzing…" : "Get AI Analysis"}
+              </Button>
+            </div>
+          )}
           <div className="w-full space-y-2 flex-shrink-0 min-h-0">
             <p className="text-sm font-medium text-foreground">Strong moments</p>
             {strongMoments && strongMoments.length > 0 ? (
@@ -229,13 +250,15 @@ export function ShotCapturePanel({
                   </li>
                 ))}
               </ul>
-            ) : shot.sceneStorageId ? (
-              <p className="text-xs text-muted-foreground">Analyzing… video</p>
+            ) : isAnalyzing ? (
+              <p className="text-xs text-muted-foreground">Analyzing…</p>
+            ) : onGetAIAnalysis && shot.sceneStorageId ? (
+              <p className="text-xs text-muted-foreground">Run AI analysis to see strong moments.</p>
             ) : null}
           </div>
           <div className="w-full space-y-2 flex-shrink-0 min-h-0">
-            <p className="text-sm font-medium text-foreground">Video Scene feedback</p>
-            {revealedFeedback && sceneFeedback ? (
+            <p className="text-sm font-medium text-foreground">AI feedback</p>
+            {sceneFeedback ? (
               <div className="space-y-2 text-sm">
                 <p className="text-muted-foreground">{sceneFeedback.alignmentSummary}</p>
                 {sceneFeedback.pros.length > 0 && (
@@ -259,15 +282,13 @@ export function ShotCapturePanel({
                   </div>
                 )}
               </div>
-            ) : sceneFeedback ? (
-              <Button type="button" variant="outline" size="sm" onClick={onRevealFeedback}>
-                Get AI Feedback
-              </Button>
-            ) : shot.sceneStorageId ? (
-              <p className="text-xs text-muted-foreground">Analyzing… video</p>
+            ) : isAnalyzing ? (
+              <p className="text-xs text-muted-foreground">Analyzing…</p>
+            ) : onGetAIAnalysis && shot.sceneStorageId ? (
+              <p className="text-xs text-muted-foreground">Run AI analysis to see feedback.</p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Run analysis above to see alignment and feedback.
+                Run AI analysis to see alignment and feedback.
               </p>
             )}
           </div>

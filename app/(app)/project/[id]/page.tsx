@@ -116,6 +116,8 @@ function SortableShotRow({
   unassignedEditorContent,
   editorModeNotes,
   onOpenReorder,
+  statusLabel,
+  videoCount,
 }: {
   shot: { _id: Id<"shots">; title: string; description: string; shotCategory?: string | null; purpose?: string | null; status?: string; sceneStorageId?: Id<"_storage"> | null; order?: number; sceneDuration?: number | null; strongMoments?: { timestampSeconds: number; reason: string }[] | null; sceneFeedback?: { alignmentSummary: string; pros: string[]; cons: string[] } | null; sceneNotes?: string | null };
   index: number;
@@ -130,6 +132,8 @@ function SortableShotRow({
   unassignedEditorContent?: React.ReactNode;
   editorModeNotes?: React.ReactNode;
   onOpenReorder?: () => void;
+  statusLabel?: string;
+  videoCount?: number;
 }) {
   const isUnassigned = shot.status !== "captured";
   const {
@@ -199,6 +203,15 @@ function SortableShotRow({
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
+
+      {isEditorMode && (statusLabel != null || videoCount != null) ? (
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          {statusLabel != null ? <span>{statusLabel}</span> : <span />}
+          <span className="tabular-nums">
+            {(videoCount ?? 0) > 0 ? `${videoCount} video${(videoCount ?? 0) === 1 ? "" : "s"}` : "0 videos"}
+          </span>
+        </div>
+      ) : null}
 
       <div className="flex flex-col items-center text-center min-w-0">
         <div className="w-full max-w-md space-y-2 flex flex-col items-center">
@@ -442,14 +455,14 @@ export default function ProjectPlanPage() {
   const captureMode: "pre" | "post" | "assigned" =
     recordedBlob
       ? "post"
-      : activeShot?.status === "captured" && activeShot?.sceneStorageId && sceneUrl
+      : activeShot?.status === "captured" && activeShot?.sceneStorageId
         ? "assigned"
         : "pre";
 
   const [revealedFeedbackShotId, setRevealedFeedbackShotId] = useState<Id<"shots"> | null>(null);
+  const [analyzingShotId, setAnalyzingShotId] = useState<Id<"shots"> | null>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement>(null);
   const reviewVideoRef = useRef<HTMLVideoElement>(null);
-  const analysisTriggeredForShotsRef = useRef<Set<Id<"shots">>>(new Set());
   const pendingOpenCameraRef = useRef(false);
 
   useEffect(() => {
@@ -458,24 +471,22 @@ export default function ProjectPlanPage() {
     nativeCameraInputRef.current?.click();
   }, [activeShotId]);
 
-  useEffect(() => {
-    if (!activeShot?.sceneStorageId) {
-      if (activeShot?._id) analysisTriggeredForShotsRef.current.delete(activeShot._id);
-      return;
-    }
-    const hasNoStrongMoments = !activeShot?.strongMoments || activeShot.strongMoments.length === 0;
-    if (!hasNoStrongMoments) return;
-    if (analysisTriggeredForShotsRef.current.has(activeShot._id)) return;
-    analysisTriggeredForShotsRef.current.add(activeShot._id);
-    void (async () => {
-      await new Promise((r) => setTimeout(r, 2000));
-      const videoUrl = await convex.query(api.shots.getSceneUrlByShotId, { shotId: activeShot._id });
-      await analyzeStrongMoments({ shotId: activeShot._id, videoUrl: videoUrl ?? undefined });
-    })().catch(() => {});
-  }, [activeShot?._id, activeShot?.sceneStorageId, activeShot?.strongMoments, analyzeStrongMoments, convex]);
-
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  const handleGetAIAnalysis = useCallback(
+    async (shotId: Id<"shots">) => {
+      if (analyzingShotId !== null) return;
+      setAnalyzingShotId(shotId);
+      try {
+        const videoUrl = await convex.query(api.shots.getSceneUrlByShotId, { shotId });
+        await analyzeStrongMoments({ shotId, videoUrl: videoUrl ?? undefined });
+      } finally {
+        setAnalyzingShotId(null);
+      }
+    },
+    [analyzingShotId, convex, analyzeStrongMoments]
   );
 
   const handleDragEnd = async (event: DragEndEvent) => {
@@ -817,7 +828,14 @@ export default function ProjectPlanPage() {
                   strategy={verticalListSortingStrategy}
                 >
                   <ol className="divide-y-2 divide-primary/20">
-                    {shots.map((shot, i) => (
+                    {shots.map((shot, i) => {
+                      const isAssigned = shot.status === "captured";
+                      const savedState = captureStateByShot[shot._id];
+                      const hasVideoInProgress = savedState && (savedState.isUploading || savedState.recordedBlobUrl || savedState.uploadedStorageId);
+                      const hasVideo = isAssigned || !!shot.sceneStorageId || hasVideoInProgress || (mediaCountByShotId[shot._id] ?? 0) > 0;
+                      const reportLabel = isAssigned ? "Status: Video Assigned" : hasVideo ? "Status: Videos Captured" : "Status: Not Captured";
+                      const count = mediaCountByShotId[shot._id] ?? 0;
+                      return (
                       <SortableShotRow
                         key={shot._id}
                         shot={shot}
@@ -830,6 +848,8 @@ export default function ProjectPlanPage() {
                         isActive={activeShotId === shot._id && !!recordedBlob}
                         onSetActiveShot={() => setActiveShotId(shot._id)}
                         isEditorMode
+                        statusLabel={reportLabel}
+                        videoCount={count}
                         unassignedEditorContent={
                           shot.status !== "captured" ? (
                             activeShotId === shot._id && recordedBlob ? (
@@ -861,6 +881,8 @@ export default function ProjectPlanPage() {
                                 sceneFeedback={shot.sceneFeedback ?? null}
                                 revealedFeedback={revealedFeedbackShotId === shot._id}
                                 onRevealFeedback={() => setRevealedFeedbackShotId(shot._id)}
+                                onGetAIAnalysis={() => handleGetAIAnalysis(shot._id)}
+                                isAnalyzing={analyzingShotId === shot._id}
                                 reviewVideoRef={reviewVideoRef}
                                 assignedVideoInLibrary={assignedVideoInLibrary}
                                 compact
@@ -908,7 +930,8 @@ export default function ProjectPlanPage() {
                           </div>
                         }
                       />
-                    ))}
+                    );
+                    })}
                   </ol>
                 </SortableContext>
               </DndContext>
@@ -1065,6 +1088,8 @@ export default function ProjectPlanPage() {
                                   sceneFeedback={shot.sceneFeedback ?? null}
                                   revealedFeedback={revealedFeedbackShotId === shot._id}
                                   onRevealFeedback={() => setRevealedFeedbackShotId(shot._id)}
+                                  onGetAIAnalysis={() => handleGetAIAnalysis(shot._id)}
+                                  isAnalyzing={analyzingShotId === shot._id}
                                   reviewVideoRef={reviewVideoRef}
                                   assignedVideoInLibrary={assignedVideoInLibrary}
                                   compact
@@ -1152,6 +1177,62 @@ export default function ProjectPlanPage() {
                                 </div>
                               </>
                             )
+                          ) : isAssigned && shot.sceneStorageId ? (
+                            <>
+                              <div className="flex items-center justify-center gap-2 flex-wrap">
+                                <SceneThumbnail storageId={shot.sceneStorageId} />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setReplaceModalShotId(shot._id)}
+                                >
+                                  Replace
+                                </Button>
+                              </div>
+                              <div className="space-y-2 mt-2">
+                                {(!shot.strongMoments || shot.strongMoments.length === 0) && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={analyzingShotId === shot._id ? undefined : () => handleGetAIAnalysis(shot._id)}
+                                    disabled={analyzingShotId === shot._id}
+                                  >
+                                    {analyzingShotId === shot._id ? "Analyzing…" : "Get AI Analysis"}
+                                  </Button>
+                                )}
+                                {shot.strongMoments && shot.strongMoments.length > 0 ? (
+                                  <div>
+                                    <p className="text-xs font-medium text-foreground mb-1">Strong moments</p>
+                                    <ul className="text-xs text-muted-foreground space-y-0.5">
+                                      {shot.strongMoments.slice(0, 3).map((m, i) => (
+                                        <li key={i}>{m.reason}</li>
+                                      ))}
+                                      {shot.strongMoments.length > 3 ? <li>+{shot.strongMoments.length - 3} more</li> : null}
+                                    </ul>
+                                  </div>
+                                ) : null}
+                                {shot.sceneFeedback ? (
+                                  <div>
+                                    <p className="text-xs font-medium text-foreground mb-1">AI feedback</p>
+                                    <p className="text-xs text-muted-foreground line-clamp-2">{shot.sceneFeedback.alignmentSummary}</p>
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className="space-y-1 mt-3">
+                                <label className="text-xs font-medium text-foreground">Notes &amp; reminders</label>
+                                <textarea
+                                  defaultValue={shot.sceneNotes ?? ""}
+                                  onBlur={(e) => {
+                                    const v = e.target.value;
+                                    if (v !== (shot.sceneNotes ?? ""))
+                                      updateShot({ shotId: shot._id, sceneNotes: v });
+                                  }}
+                                  placeholder="What to do or reminders for this scene…"
+                                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm min-h-[72px] resize-y"
+                                />
+                              </div>
+                            </>
                           ) : savedState && (savedState.isUploading || savedState.recordedBlobUrl || savedState.uploadedStorageId) ? (
                             <>
                               <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
@@ -1243,7 +1324,6 @@ export default function ProjectPlanPage() {
           shotId={replaceModalShotId}
           shots={(shots ?? []).map((s) => ({ _id: s._id, sceneStorageId: s.sceneStorageId }))}
           linkScene={linkScene}
-          analyzeStrongMoments={analyzeStrongMoments}
         />
       )}
     </div>

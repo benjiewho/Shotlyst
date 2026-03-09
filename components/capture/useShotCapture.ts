@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useMutation, useAction, useConvex } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
@@ -42,11 +42,9 @@ export function useShotCapture({
   onAssigned?: () => void;
   onCaptureStateChange?: (shotId: Id<"shots">, state: CaptureStateSnapshot) => void;
 }) {
-  const convex = useConvex();
   const generateUploadUrl = useMutation(api.shots.generateUploadUrl);
   const linkScene = useMutation(api.shots.linkScene);
   const saveToLibrary = useMutation(api.media.saveToLibrary);
-  const analyzeStrongMoments = useAction(api.ai.analyzeVideoForStrongMoments);
 
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedDuration, setRecordedDuration] = useState(0);
@@ -188,14 +186,6 @@ export function useShotCapture({
         setRecordedBlobUrl(null);
       }
       onAssigned?.();
-      await new Promise((r) => setTimeout(r, 2000));
-      const videoUrl = await convex.query(api.shots.getSceneUrlByShotId, {
-        shotId: shotIdToLink,
-      });
-      analyzeStrongMoments({
-        shotId: shotIdToLink,
-        videoUrl: videoUrl ?? undefined,
-      }).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Assign failed.");
     }
@@ -205,8 +195,6 @@ export function useShotCapture({
     recordedDuration,
     recordedBlobUrl,
     linkScene,
-    convex,
-    analyzeStrongMoments,
     onAssigned,
   ]);
 

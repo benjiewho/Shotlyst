@@ -70,6 +70,7 @@ export default defineSchema({
     contentType,
     videoGoal: v.string(),
     audience: v.array(v.string()),
+    locationImageStorageId: v.optional(v.id("_storage")),
     templateId: v.optional(v.string()),
     status: projectStatus,
     planGenerated: v.boolean(),

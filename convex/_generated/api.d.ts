@@ -16,6 +16,11 @@ import type * as projects from "../projects.js";
 import type * as reflections from "../reflections.js";
 import type * as shots from "../shots.js";
 import type * as users from "../users.js";
+import type * as videoAnalysis_config from "../videoAnalysis/config.js";
+import type * as videoAnalysis_gemini from "../videoAnalysis/gemini.js";
+import type * as videoAnalysis_preprocessorClient from "../videoAnalysis/preprocessorClient.js";
+import type * as videoAnalysis_rankHighlights from "../videoAnalysis/rankHighlights.js";
+import type * as videoAnalysis_types from "../videoAnalysis/types.js";
 
 import type {
   ApiFromModules,
@@ -32,6 +37,11 @@ declare const fullApi: ApiFromModules<{
   reflections: typeof reflections;
   shots: typeof shots;
   users: typeof users;
+  "videoAnalysis/config": typeof videoAnalysis_config;
+  "videoAnalysis/gemini": typeof videoAnalysis_gemini;
+  "videoAnalysis/preprocessorClient": typeof videoAnalysis_preprocessorClient;
+  "videoAnalysis/rankHighlights": typeof videoAnalysis_rankHighlights;
+  "videoAnalysis/types": typeof videoAnalysis_types;
 }>;
 
 /**

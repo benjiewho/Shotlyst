@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,11 +43,16 @@ export default function NewProjectPage() {
   const user = useQuery(api.users.getMe);
   const createProject = useMutation(api.projects.create);
   const generatePlan = useAction(api.ai.generatePlan);
+  const generateUploadUrl = useMutation(api.shots.generateUploadUrl);
+  const locationPhotoInputRef = useRef<HTMLInputElement>(null);
 
   const [location, setLocation] = useState("");
   const [contentType, setContentType] = useState<"tiktok" | "youtube_short" | "travel_diary">("tiktok");
   const [videoGoal, setVideoGoal] = useState("");
   const [audience, setAudience] = useState<string[]>([]);
+  const [locationImageStorageId, setLocationImageStorageId] = useState<Id<"_storage"> | null>(null);
+  const [locationImagePreviewUrl, setLocationImagePreviewUrl] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +60,51 @@ export default function NewProjectPage() {
     setAudience((prev) =>
       prev.includes(option) ? prev.filter((x) => x !== option) : [...prev, option]
     );
+  };
+
+  const handleLocationPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !file.type.startsWith("image/")) return;
+    if (locationImagePreviewUrl) URL.revokeObjectURL(locationImagePreviewUrl);
+    setLocationImagePreviewUrl(null);
+    setLocationImageStorageId(null);
+    setIsUploadingImage(true);
+    setError(null);
+    try {
+      const uploadUrl = await generateUploadUrl();
+      const storageId = await new Promise<Id<"_storage">>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText) as { storageId: Id<"_storage"> };
+              resolve(data.storageId);
+            } catch {
+              reject(new Error("Invalid upload response"));
+            }
+          } else {
+            reject(new Error(xhr.responseText || `Upload failed (${xhr.status})`));
+          }
+        };
+        xhr.onerror = () => reject(new Error("Upload failed"));
+        xhr.open("POST", uploadUrl);
+        xhr.setRequestHeader("Content-Type", file.type);
+        xhr.send(file);
+      });
+      setLocationImageStorageId(storageId);
+      setLocationImagePreviewUrl(URL.createObjectURL(file));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Photo upload failed.");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const removeLocationPhoto = () => {
+    if (locationImagePreviewUrl) URL.revokeObjectURL(locationImagePreviewUrl);
+    setLocationImagePreviewUrl(null);
+    setLocationImageStorageId(null);
   };
 
   const videoGoalPlaceholder = getVideoGoalPlaceholder(
@@ -88,6 +139,7 @@ export default function NewProjectPage() {
         contentType,
         videoGoal: trimmedGoal,
         audience,
+        ...(locationImageStorageId ? { locationImageStorageId } : {}),
       });
       await generatePlan({ projectId });
       router.push(`/project/${projectId}`);
@@ -117,6 +169,50 @@ export default function NewProjectPage() {
                 className="w-full"
                 disabled={isSubmitting}
               />
+            </div>
+            <div>
+              <span className="text-sm font-medium text-foreground block mb-1.5">
+                Location photo <span className="text-muted-foreground font-normal">(optional)</span>
+              </span>
+              <input
+                ref={locationPhotoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                aria-label="Take or choose a location photo"
+                onChange={handleLocationPhotoChange}
+                disabled={isSubmitting || isUploadingImage}
+              />
+              {locationImageStorageId && locationImagePreviewUrl ? (
+                <div className="flex flex-col gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- preview is a blob/object URL */}
+                  <img
+                    src={locationImagePreviewUrl}
+                    alt="Location"
+                    className="w-full max-w-xs aspect-video object-cover rounded-lg border border-border"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={removeLocationPhoto}
+                    disabled={isSubmitting}
+                  >
+                    Remove photo
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="default"
+                  onClick={() => locationPhotoInputRef.current?.click()}
+                  disabled={isSubmitting || isUploadingImage}
+                >
+                  {isUploadingImage ? "Uploading…" : "Take a photo"}
+                </Button>
+              )}
             </div>
             <div>
               <label htmlFor="contentType" className="text-sm font-medium text-foreground block mb-1.5">

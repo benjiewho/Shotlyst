@@ -183,7 +183,49 @@ Project brief:
 - Video goal: ${project.videoGoal}
 - Audience: ${project.audience.join(", ")}`;
 
-        const result = await model.generateContent(prompt);
+        let locationPhotoPrompt = prompt;
+        if (project.locationImageStorageId) {
+          locationPhotoPrompt = `The user has provided a photo of the location (attached). Use it to make shot suggestions more specific to the actual place (e.g. decor, layout, atmosphere).
+
+${prompt}`;
+        }
+
+        let result;
+        try {
+          if (project.locationImageStorageId) {
+            const imageUrl = await ctx.runQuery(api.projects.getLocationImageUrl, {
+              projectId: args.projectId,
+            });
+            if (imageUrl) {
+              const imageResponse = await fetch(imageUrl);
+              if (imageResponse.ok) {
+                const arrayBuffer = await imageResponse.arrayBuffer();
+                const base64 = Buffer.from(arrayBuffer).toString("base64");
+                const contentType = imageResponse.headers.get("content-type")?.split(";")[0]?.trim() || "image/jpeg";
+                const mimeType = contentType.startsWith("image/") ? contentType : "image/jpeg";
+                result = await model.generateContent([
+                  {
+                    inlineData: {
+                      mimeType,
+                      data: base64,
+                    },
+                  },
+                  { text: locationPhotoPrompt },
+                ]);
+              } else {
+                result = await model.generateContent(prompt);
+              }
+            } else {
+              result = await model.generateContent(prompt);
+            }
+          } else {
+            result = await model.generateContent(prompt);
+          }
+        } catch (imageErr) {
+          console.warn("Location image fetch or multimodal request failed, using text only:", imageErr);
+          result = await model.generateContent(prompt);
+        }
+
         const response = result.response;
         const text = response.text();
         if (!text) throw new Error("Empty response from Gemini");

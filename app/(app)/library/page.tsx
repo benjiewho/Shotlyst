@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useQuery, useMutation, useAction, useConvex } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -200,9 +200,7 @@ function MediaThumbnail({
 export default function LibraryPage() {
   const searchParams = useSearchParams();
   const library = useQuery(api.media.listLibrary);
-  const convex = useConvex();
   const linkScene = useMutation(api.shots.linkScene);
-  const analyzeStrongMoments = useAction(api.ai.analyzeVideoForStrongMoments);
   const unassignShot = useMutation(api.shots.unassignShot);
   const removeMedia = useMutation(api.media.remove);
   const [assigningMediaId, setAssigningMediaId] = useState<Id<"media"> | null>(null);
@@ -306,14 +304,6 @@ export default function LibraryPage() {
                                     storageId: m.storageId as Id<"_storage">,
                                     duration: m.duration,
                                   });
-                                  await new Promise((r) => setTimeout(r, 2000));
-                                  const videoUrl = await convex.query(api.shots.getSceneUrlByShotId, {
-                                    shotId: shot.shotId as Id<"shots">,
-                                  });
-                                  analyzeStrongMoments({
-                                    shotId: shot.shotId as Id<"shots">,
-                                    videoUrl: videoUrl ?? undefined,
-                                  }).catch(() => {});
                                 } finally {
                                   setAssigningMediaId(null);
                                 }

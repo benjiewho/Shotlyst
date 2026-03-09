@@ -48,6 +48,18 @@ export const get = query({
   },
 });
 
+/** Returns the storage URL for the project's location photo, or null. Used by generatePlan to fetch the image. */
+export const getLocationImageUrl = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== userId || !project.locationImageStorageId) return null;
+    return await ctx.storage.getUrl(project.locationImageStorageId);
+  },
+});
+
 export const create = mutation({
   args: {
     name: v.string(),
@@ -55,6 +67,7 @@ export const create = mutation({
     contentType,
     videoGoal: v.string(),
     audience: v.array(v.string()),
+    locationImageStorageId: v.optional(v.id("_storage")),
     // DEPRECATED: templateId is no longer used by any frontend flow (AI-only).
     // Kept optional for backward compatibility. Safe to remove after confirming
     // no production data relies on it.
@@ -71,6 +84,7 @@ export const create = mutation({
       contentType: args.contentType,
       videoGoal: args.videoGoal,
       audience: args.audience,
+      locationImageStorageId: args.locationImageStorageId,
       templateId: args.templateId,
       status: "planning",
       planGenerated: false,
