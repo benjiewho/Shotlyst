@@ -407,6 +407,7 @@ export default function ProjectPlanPage() {
   const onCaptureStateChange = useCallback((shotId: Id<"shots">, state: CaptureStateSnapshot) => {
     setCaptureStateByShot((prev) => ({ ...prev, [shotId]: state }));
   }, []);
+  const pendingOpenCameraRef = useRef(false);
 
   const {
     recordedBlob,
@@ -424,6 +425,7 @@ export default function ProjectPlanPage() {
     currentShot: activeShot,
     projectId,
     onAssigned: useCallback(() => {
+      pendingOpenCameraRef.current = false;
       if (nextUnassignedAfterActive) setActiveShotId(nextUnassignedAfterActive._id);
       else setActiveShotId(sortedShots[0]?._id ?? null);
     }, [nextUnassignedAfterActive, sortedShots]),
@@ -473,7 +475,6 @@ export default function ProjectPlanPage() {
   const [analyzingShotId, setAnalyzingShotId] = useState<Id<"shots"> | null>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement>(null);
   const reviewVideoRef = useRef<HTMLVideoElement>(null);
-  const pendingOpenCameraRef = useRef(false);
 
   useEffect(() => {
     if (!pendingOpenCameraRef.current || !activeShotId) return;
@@ -953,13 +954,6 @@ export default function ProjectPlanPage() {
       </div>
 
       <div className="mt-8 flex flex-col gap-3">
-        <Button
-          className="w-full min-h-12"
-          size="lg"
-          onClick={() => firstUnassignedShot && setActiveShotId(firstUnassignedShot._id)}
-        >
-          Capture
-        </Button>
         <Button variant="outline" className="w-full min-h-12" size="lg" asChild>
           <Link href={`/project/${project._id}/report`}>View report</Link>
         </Button>
@@ -1180,7 +1174,7 @@ export default function ProjectPlanPage() {
                             ) : savedState && (savedState.isUploading || savedState.uploadedStorageId || savedState.recordedBlobUrl) ? (
                               <>
                                 <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                                  {savedState.recordedBlobUrl && (
+                                  {savedState.isUploading && savedState.recordedBlobUrl && (
                                     <video src={savedState.recordedBlobUrl} controls playsInline className="w-full max-h-[200px] rounded object-contain bg-black" />
                                   )}
                                   {savedState.isUploading && (
@@ -1192,7 +1186,7 @@ export default function ProjectPlanPage() {
                                     </div>
                                   )}
                                   {savedState.uploadedStorageId && !savedState.isUploading && (
-                                    <p className="text-sm text-muted-foreground">Video ready. Assign from this card when it has focus.</p>
+                                    <p className="text-sm text-muted-foreground">Video saved. Assign from this card when it has focus.</p>
                                   )}
                                   {savedState.error && <p className="text-sm text-destructive">{savedState.error}</p>}
                                 </div>

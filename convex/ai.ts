@@ -152,6 +152,7 @@ export const generatePlan = action({
               : "Platform: Travel — location reveal, cultural detail, personal moment, atmosphere.";
 
         const prompt = `You are a pragmatic director for everyday creators. Output only valid JSON; no markdown or commentary.
+Audience: beginner-to-moderate creators. Keep the plan simple and not overwhelming. Short, clear descriptions (1–2 sentences per shot). Avoid long paragraphs or dense jargon.
 
 CONTENT: ${contentTypeHint} ${audienceLine}
 ${platformLine}
@@ -162,10 +163,10 @@ SCENE STRATEGY (use these categories):
 - action_shots: movement, result, energy, climax.
 - detail_broll: close-ups, texture, cutaways, coverage.
 
-SPECIFICITY: Avoid generic descriptions. Be concrete and shootable. For each shot, "title" must be a specific, location- and purpose-relevant suggestion (e.g. "Coffee being poured", "Wide of the cafe interior", "Pastry close-up") — never the category name. In "description" include one concrete cue when helpful: angle (overhead, eye-level), movement (slow pan, static), or moment (pour, first bite).
+SPECIFICITY: Be concrete and shootable. For each shot, "title" is a short, location-relevant suggestion (e.g. "Coffee being poured", "Wide of the cafe", "Pastry close-up") — never the category name. "description": one short sentence max — one cue like angle, movement, or moment. No long lists or over-explaining.
 
-VARIETY: Vary shots — if one is wide and static, next can be closer or with movement. Mix pacing.
-ORDER: Hook → establishing → main action/beats → detail/b-roll → closing/CTA if needed. Include 5–8 shots (hard cap 10). Prefer "must" for essential shots, "nice" or "optional" for extras.
+VARIETY: Mix wide/close and static/movement. Keep it simple.
+ORDER: Hook → establishing → main action → detail/b-roll → closing if needed. Include 5–8 shots (hard cap 10). Prefer "must" for essential shots, "nice" or "optional" for extras.
 
 Output a JSON object with this exact structure:
 {
