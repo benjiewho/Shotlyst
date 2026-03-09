@@ -100,7 +100,7 @@ function MediaThumbnail({
   }
 
   return (
-    <div className="flex flex-col min-w-0 flex-1 max-w-[160px]">
+    <div className="flex flex-col w-full min-w-0 flex-1 max-w-full sm:max-w-[160px]">
       <div
         className={cn(
           "relative rounded-t-lg overflow-hidden border-2 border-b-0",
@@ -288,7 +288,7 @@ export default function LibraryPage() {
                         <p className="text-sm font-medium text-foreground">
                           Scene {shot.order + 1}: {shot.shotTitle}
                         </p>
-                        <div className="flex flex-wrap gap-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-3">
                           {shot.media.map((m) => (
                             <MediaThumbnail
                               key={m.mediaId}

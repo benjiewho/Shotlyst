@@ -479,7 +479,6 @@ export default function ProjectPlanPage() {
     if (oldIndex === -1 || newIndex === -1) return;
     const newOrder = arrayMove([...reorderSheetShotIds], oldIndex, newIndex);
     await reorderShots({ projectId, shotIds: newOrder });
-    setReorderOpen(false);
   };
 
   const reorderSheetShotIds = useMemo(
@@ -1098,6 +1097,7 @@ export default function ProjectPlanPage() {
                                     onClick={() => {
                                       pendingOpenCameraRef.current = true;
                                       setActiveShotId(shot._id);
+                                      nativeCameraInputRef.current?.click();
                                     }}
                                   >
                                     Add video
@@ -1175,13 +1175,13 @@ export default function ProjectPlanPage() {
       )}
 
       {reorderOpen && sortedShots.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" onClick={() => setReorderOpen(false)}>
-          <div className="bg-background rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center overflow-hidden" onClick={() => setReorderOpen(false)}>
+          <div className="bg-background rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col shadow-xl min-h-0" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b flex items-center justify-between shrink-0">
               <h3 className="font-semibold text-lg">Reorder scenes</h3>
               <Button variant="ghost" size="sm" onClick={() => setReorderOpen(false)}>Done</Button>
             </div>
-            <div className="overflow-auto flex-1 p-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 overscroll-contain" style={{ touchAction: "pan-y", overscrollBehavior: "contain" }}>
               <DndContext sensors={sensors} onDragEnd={handleReorderSheetDragEnd}>
                 <SortableContext items={reorderSheetShotIds} strategy={verticalListSortingStrategy}>
                   <ol className="space-y-2">
