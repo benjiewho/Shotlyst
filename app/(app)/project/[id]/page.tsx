@@ -702,73 +702,7 @@ export default function ProjectPlanPage() {
             ) : shots.length === 0 ? (
               <p className="text-sm text-muted-foreground">No shots in this plan. Add one above.</p>
             ) : shotListViewMode === "capture" ? (
-              <SwipeableVertical
-                onSwipeUp={() => nextShotId && setActiveShotId(nextShotId)}
-                onSwipeDown={() => prevShotId && setActiveShotId(prevShotId)}
-                className="flex-1 min-h-0 flex flex-col min-h-[calc(100vh-16rem)]"
-              >
-                <div className="rounded-xl border border-primary/30 bg-card p-4 flex flex-col gap-3 flex-1 min-h-0 overflow-auto">
-                  {activeShot && (
-                    <>
-                      <p className="text-xs text-muted-foreground">
-                        Scene {activeShot.order + 1} of {sortedShots.length}
-                      </p>
-                      <p className="text-sm font-medium text-foreground">{activeShot.title}</p>
-                      {activeShot.description ? (
-                        <p className="text-xs text-muted-foreground line-clamp-3">{activeShot.description}</p>
-                      ) : null}
-                      <ShotCapturePanel
-                        mode={captureMode}
-                        shot={activeShot}
-                        recordedBlobUrl={recordedBlobUrl}
-                        isUploading={isUploading}
-                        uploadProgress={uploadProgress}
-                        error={error}
-                        canAssign={!!uploadedStorageId}
-                        onRetake={retake}
-                        onAssign={confirmCapture}
-                        nativeCameraInputRef={nativeCameraInputRef}
-                        onOpenCamera={() => nativeCameraInputRef.current?.click()}
-                        onCameraFileChange={handleNativeCameraFile}
-                        onOpenGallery={() => setReplaceModalShotId(activeShotId)}
-                        sceneUrl={captureMode === "assigned" ? sceneUrl ?? null : null}
-                        onReplace={() => setReplaceModalShotId(activeShotId)}
-                        onUnassign={async () => {
-                          if (!activeShot?._id) return;
-                          try {
-                            await unassignShot({ shotId: activeShot._id });
-                          } catch (err) {
-                            setError(err instanceof Error ? err.message : "Unassign failed.");
-                          }
-                        }}
-                        strongMoments={activeShot?.strongMoments ?? null}
-                        sceneFeedback={activeShot?.sceneFeedback ?? null}
-                        revealedFeedback={revealedFeedbackShotId === activeShot?._id}
-                        onRevealFeedback={() => activeShot?._id && setRevealedFeedbackShotId(activeShot._id)}
-                        reviewVideoRef={reviewVideoRef}
-                        assignedVideoInLibrary={assignedVideoInLibrary}
-                        compact
-                        hideInstructionText
-                        primaryButtonLabel="Add video"
-                      />
-                      <div className="space-y-1 mt-3">
-                        <label className="text-xs font-medium text-foreground">Notes &amp; reminders</label>
-                        <textarea
-                          defaultValue={activeShot.sceneNotes ?? ""}
-                          onBlur={(e) => {
-                            const v = e.target.value;
-                            if (v !== (activeShot.sceneNotes ?? ""))
-                              updateShot({ shotId: activeShot._id, sceneNotes: v });
-                          }}
-                          placeholder="What to do or reminders for this scene…"
-                          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm min-h-[72px] resize-y"
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground text-center mt-2 flex-shrink-0">Swipe up/down to change scene</p>
-              </SwipeableVertical>
+              <p className="text-sm text-muted-foreground py-4">Capture mode — use the full-screen overlay.</p>
             ) : (
               <>
                 {shotListViewMode === "editor" && (
@@ -908,6 +842,164 @@ export default function ProjectPlanPage() {
           <Link href={`/project/${project._id}/report`}>View report</Link>
         </Button>
       </div>
+
+      {shotListViewMode === "capture" && sortedShots.length > 0 && (
+        <div className="fixed inset-0 z-50 bg-background flex flex-col">
+          <input
+            ref={nativeCameraInputRef}
+            type="file"
+            accept="video/*"
+            capture="environment"
+            className="hidden"
+            aria-label="Record video"
+            onChange={handleNativeCameraFile}
+          />
+          <header className="flex-shrink-0 flex flex-row items-center justify-between gap-2 border-b border-border px-4 py-3">
+            <span className="text-base font-semibold">Shot list</span>
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg border border-input bg-muted/50 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setShotListViewMode("editor")}
+                  className="rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                >
+                  Editor
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md px-2.5 py-1 text-xs font-medium bg-background text-foreground shadow"
+                >
+                  Capture
+                </button>
+              </div>
+              {projectId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    if (!projectId || shots === undefined) return;
+                    await createOneShot({
+                      projectId,
+                      type: "nice",
+                      shotCategory: "establishing_shot",
+                      title: "New shot",
+                      description: "Add your notes here.",
+                      order: shots.length,
+                    });
+                  }}
+                >
+                  Add shot
+                </Button>
+              )}
+            </div>
+          </header>
+          <SwipeableVertical
+            onSwipeUp={() => nextShotId && setActiveShotId(nextShotId)}
+            onSwipeDown={() => prevShotId && setActiveShotId(prevShotId)}
+            className="flex-1 min-h-0 flex flex-col overflow-hidden"
+          >
+            <div
+              className="flex-1 min-h-0 overflow-hidden"
+              style={{ height: "100%" }}
+            >
+              <div
+                className="h-full transition-transform duration-300 ease-out"
+                style={{
+                  height: `${sortedShots.length * 100}%`,
+                  transform: `translateY(-${activeIndex >= 0 ? activeIndex * (100 / sortedShots.length) : 0}%)`,
+                }}
+              >
+                {sortedShots.map((shot) => (
+                  <div
+                    key={shot._id}
+                    className="h-full flex flex-col overflow-auto px-4 py-4"
+                    style={{ height: `${100 / sortedShots.length}%` }}
+                  >
+                    <div className="rounded-xl border border-primary/30 bg-card p-4 flex flex-col gap-3 flex-1 min-h-0">
+                      <p className="text-xs text-muted-foreground">
+                        Scene {(shot.order ?? 0) + 1} of {sortedShots.length}
+                      </p>
+                      <p className="text-sm font-medium text-foreground">{shot.title}</p>
+                      {shot.description ? (
+                        <p className="text-xs text-muted-foreground line-clamp-3">{shot.description}</p>
+                      ) : null}
+                      {activeShotId === shot._id ? (
+                        <>
+                          <ShotCapturePanel
+                            mode={captureMode}
+                            shot={activeShot}
+                            recordedBlobUrl={recordedBlobUrl}
+                            isUploading={isUploading}
+                            uploadProgress={uploadProgress}
+                            error={error}
+                            canAssign={!!uploadedStorageId}
+                            onRetake={retake}
+                            onAssign={confirmCapture}
+                            nativeCameraInputRef={nativeCameraInputRef}
+                            onOpenCamera={() => nativeCameraInputRef.current?.click()}
+                            onCameraFileChange={handleNativeCameraFile}
+                            onOpenGallery={() => setReplaceModalShotId(shot._id)}
+                            sceneUrl={captureMode === "assigned" ? sceneUrl ?? null : null}
+                            onReplace={() => setReplaceModalShotId(shot._id)}
+                            onUnassign={async () => {
+                              if (!shot._id) return;
+                              try {
+                                await unassignShot({ shotId: shot._id });
+                              } catch (err) {
+                                setError(err instanceof Error ? err.message : "Unassign failed.");
+                              }
+                            }}
+                            strongMoments={shot.strongMoments ?? null}
+                            sceneFeedback={shot.sceneFeedback ?? null}
+                            revealedFeedback={revealedFeedbackShotId === shot._id}
+                            onRevealFeedback={() => setRevealedFeedbackShotId(shot._id)}
+                            reviewVideoRef={reviewVideoRef}
+                            assignedVideoInLibrary={assignedVideoInLibrary}
+                            compact
+                            hideInstructionText
+                            primaryButtonLabel="Add video"
+                          />
+                          <div className="space-y-1 mt-3">
+                            <label className="text-xs font-medium text-foreground">Notes &amp; reminders</label>
+                            <textarea
+                              defaultValue={shot.sceneNotes ?? ""}
+                              onBlur={(e) => {
+                                const v = e.target.value;
+                                if (v !== (shot.sceneNotes ?? ""))
+                                  updateShot({ shotId: shot._id, sceneNotes: v });
+                              }}
+                              placeholder="What to do or reminders for this scene…"
+                              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm min-h-[72px] resize-y"
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm text-muted-foreground py-2">Swipe to this card to capture.</p>
+                          <div className="space-y-1 mt-3">
+                            <label className="text-xs font-medium text-foreground">Notes &amp; reminders</label>
+                            <textarea
+                              defaultValue={shot.sceneNotes ?? ""}
+                              onBlur={(e) => {
+                                const v = e.target.value;
+                                if (v !== (shot.sceneNotes ?? ""))
+                                  updateShot({ shotId: shot._id, sceneNotes: v });
+                              }}
+                              placeholder="What to do or reminders for this scene…"
+                              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm min-h-[72px] resize-y"
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </SwipeableVertical>
+          <p className="text-xs text-muted-foreground text-center py-2 flex-shrink-0 border-t border-border">Swipe up/down to change scene</p>
+        </div>
+      )}
 
       {replaceModalShotId && (
         <ReplaceVideoModal
