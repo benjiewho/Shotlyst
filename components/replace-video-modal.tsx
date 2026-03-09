@@ -82,19 +82,19 @@ export function ReplaceVideoModal({
   analyzeStrongMoments: (args: { shotId: Id<"shots">; videoUrl?: string }) => Promise<unknown>;
 }) {
   const convex = useConvex();
-  const projectMedia = useQuery(
-    api.media.listByProject,
-    open ? { projectId } : "skip"
+  const shotMedia = useQuery(
+    api.media.listByShot,
+    open ? { shotId } : "skip"
   );
   const [selectingStorageId, setSelectingStorageId] = useState<Id<"_storage"> | null>(null);
 
-  const assignedStorageIds = useMemo(
-    () => new Set(shots.map((s) => s.sceneStorageId).filter(Boolean) as Id<"_storage">[]),
-    [shots]
+  const assignedStorageIdForThisShot = useMemo(
+    () => shots.find((s) => s._id === shotId)?.sceneStorageId,
+    [shots, shotId]
   );
   const unassignedMedia = useMemo(
-    () => (projectMedia ?? []).filter((m) => !assignedStorageIds.has(m.storageId)),
-    [projectMedia, assignedStorageIds]
+    () => (shotMedia ?? []).filter((m) => m.storageId !== assignedStorageIdForThisShot),
+    [shotMedia, assignedStorageIdForThisShot]
   );
 
   const handleSelect = async (storageId: Id<"_storage">, duration: number) => {
@@ -135,7 +135,7 @@ export function ReplaceVideoModal({
         <div className="flex-1 overflow-y-auto p-4">
           {unassignedMedia.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
-              No unassigned videos in this project. Save clips to the library first, then pick one here.
+              No videos captured for this scene yet. Record or save one first.
             </p>
           ) : (
             <div className="flex flex-wrap gap-4">

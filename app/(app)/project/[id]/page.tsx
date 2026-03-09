@@ -994,13 +994,13 @@ export default function ProjectPlanPage() {
                     const hasVideoInProgressFromHook = activeShotId === shot._id && captureShotId === shot._id && (recordedBlob || isUploading);
                     const hasVideoInProgressFromMap = savedState && (savedState.isUploading || savedState.recordedBlobUrl || savedState.uploadedStorageId);
                     const hasVideoInProgress = hasVideoInProgressFromHook || !!hasVideoInProgressFromMap;
-                    const hasVideo = isAssigned || !!shot.sceneStorageId || hasVideoInProgress;
+                    const hasVideo = isAssigned || !!shot.sceneStorageId || hasVideoInProgress || (mediaCountByShotId[shot._id] ?? 0) > 0;
                     const cardBg = isAssigned
                       ? "bg-green-100 dark:bg-green-900/30"
                       : hasVideo
                         ? "bg-amber-100 dark:bg-amber-900/30"
                         : "bg-violet-100 dark:bg-violet-900/30";
-                    const reportLabel = isAssigned ? "Scene Task: Video Assigned" : hasVideo ? "Scene Task: Videos Captured" : "Scene Task: Not Captured";
+                    const reportLabel = isAssigned ? "Status: Video Assigned" : hasVideo ? "Status: Videos Captured" : "Status: Not Captured";
                     const isActiveCard = activeShotId === shot._id;
                     const useHookStateForActive = isActiveCard && captureShotId === shot._id;
                     return (
@@ -1023,7 +1023,7 @@ export default function ProjectPlanPage() {
                               <GripVertical className="h-4 w-4" />
                             </button>
                             <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-                              {isAssigned ? "1 assigned" : (mediaCountByShotId[shot._id] ?? 0) > 0 ? `${mediaCountByShotId[shot._id]} video${(mediaCountByShotId[shot._id] ?? 0) === 1 ? "" : "s"}` : "0 videos"}
+                              {(mediaCountByShotId[shot._id] ?? 0) > 0 ? `${mediaCountByShotId[shot._id]} video${(mediaCountByShotId[shot._id] ?? 0) === 1 ? "" : "s"}` : "0 videos"}
                             </span>
                           </div>
                           <p className="text-sm font-medium text-foreground">{reportLabel}</p>
