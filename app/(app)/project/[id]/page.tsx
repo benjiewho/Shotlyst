@@ -49,7 +49,14 @@ type ShotCategoryValue = (typeof SHOT_CATEGORIES)[number]["value"];
 
 type EditField = "goal" | null;
 
-function SceneThumbnail({ storageId }: { storageId: Id<"_storage"> }) {
+function SceneThumbnail({
+  storageId,
+  autoPlay = true,
+}: {
+  storageId: Id<"_storage">;
+  /** When false, video does not autoplay and uses preload="metadata" to reduce bandwidth. Default true. */
+  autoPlay?: boolean;
+}) {
   const url = useQuery(api.shots.getSceneUrl, { storageId });
   if (url === undefined) return <div className="aspect-video w-40 shrink-0 rounded-lg bg-muted animate-pulse" />;
   if (url === null) return <div className="aspect-video w-40 shrink-0 rounded-lg bg-muted text-xs flex items-center justify-center text-muted-foreground">Unavailable</div>;
@@ -59,9 +66,9 @@ function SceneThumbnail({ storageId }: { storageId: Id<"_storage"> }) {
       className="aspect-video w-40 shrink-0 rounded-lg object-cover bg-muted"
       muted
       playsInline
-      autoPlay
-      loop
-      preload="auto"
+      autoPlay={autoPlay}
+      loop={autoPlay}
+      preload={autoPlay ? "auto" : "metadata"}
     />
   );
 }
@@ -118,6 +125,7 @@ function SortableShotRow({
   onOpenReorder,
   statusLabel,
   videoCount,
+  isSelectedForAutoplay,
 }: {
   shot: { _id: Id<"shots">; title: string; description: string; shotCategory?: string | null; purpose?: string | null; status?: string; sceneStorageId?: Id<"_storage"> | null; order?: number; sceneDuration?: number | null; strongMoments?: { timestampSeconds: number; reason: string }[] | null; sceneFeedback?: { alignmentSummary: string; pros: string[]; cons: string[] } | null; sceneNotes?: string | null };
   index: number;
@@ -134,6 +142,8 @@ function SortableShotRow({
   onOpenReorder?: () => void;
   statusLabel?: string;
   videoCount?: number;
+  /** When true, SceneThumbnail for this row autoplays; when false, only metadata is loaded to reduce bandwidth. */
+  isSelectedForAutoplay?: boolean;
 }) {
   const isUnassigned = shot.status !== "captured";
   const {
@@ -249,7 +259,7 @@ function SortableShotRow({
           </div>
           {shot.status === "captured" && shot.sceneStorageId ? (
             <div className="flex items-center justify-center gap-2 flex-wrap">
-              <SceneThumbnail storageId={shot.sceneStorageId} />
+              <SceneThumbnail storageId={shot.sceneStorageId} autoPlay={isSelectedForAutoplay ?? true} />
               <Button
                 type="button"
                 variant="outline"
@@ -850,6 +860,7 @@ export default function ProjectPlanPage() {
                         isEditorMode
                         statusLabel={reportLabel}
                         videoCount={count}
+                        isSelectedForAutoplay={activeShotId === shot._id}
                         unassignedEditorContent={
                           shot.status !== "captured" ? (
                             activeShotId === shot._id && recordedBlob ? (
