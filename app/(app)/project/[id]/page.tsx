@@ -66,7 +66,15 @@ function SceneThumbnail({ storageId }: { storageId: Id<"_storage"> }) {
   );
 }
 
-function ReorderSheetItem({ shot, index }: { shot: { _id: Id<"shots">; title: string }; index: number }) {
+function ReorderSheetItem({
+  shot,
+  index,
+  onSelect,
+}: {
+  shot: { _id: Id<"shots">; title: string };
+  index: number;
+  onSelect?: (shotId: Id<"shots">) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: shot._id });
   const style = { transform: CSS.Transform.toString(transform), transition };
   return (
@@ -78,12 +86,18 @@ function ReorderSheetItem({ shot, index }: { shot: { _id: Id<"shots">; title: st
         isDragging && "opacity-50 shadow"
       )}
     >
-      <span className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground" {...attributes} {...listeners} aria-label="Drag to reorder">
+      <span className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground shrink-0" {...attributes} {...listeners} aria-label="Drag to reorder">
         <GripVertical className="h-4 w-4" />
       </span>
-      <span className="text-sm font-medium truncate flex-1">
+      <button
+        type="button"
+        className="text-sm font-medium truncate flex-1 text-left min-w-0 bg-transparent border-none cursor-pointer"
+        onClick={() => {
+          if (!isDragging && onSelect) onSelect(shot._id);
+        }}
+      >
         {index + 1}. {shot.title || "Untitled"}
-      </span>
+      </button>
     </li>
   );
 }
@@ -406,6 +420,10 @@ export default function ProjectPlanPage() {
     }
     return map;
   }, [libraryProject]);
+  const totalVideosInLibrary = useMemo(
+    () => libraryProject?.shots.reduce((sum, s) => sum + s.media.length, 0) ?? 0,
+    [libraryProject]
+  );
 
   const sceneUrl = useQuery(
     api.shots.getSceneUrl,
@@ -930,6 +948,9 @@ export default function ProjectPlanPage() {
               <p className="text-xs text-muted-foreground tabular-nums">
                 {sortedShots.filter((s) => s.status === "captured").length} / {sortedShots.length} captured
               </p>
+              <p className="text-xs text-muted-foreground tabular-nums">
+                {totalVideosInLibrary} total video{totalVideosInLibrary === 1 ? "" : "s"}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <div className="flex rounded-lg border border-input bg-muted/50 p-0.5">
@@ -989,13 +1010,23 @@ export default function ProjectPlanPage() {
                         style={{ width: `${100 / sortedShots.length}%` }}
                       >
                         <div className={cn("rounded-xl border p-4 flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto", cardBg, isAssigned ? "border-green-300 dark:border-green-700" : hasVideo ? "border-amber-300 dark:border-amber-700" : "border-violet-300 dark:border-violet-700")}>
-                          <p className="text-xs text-muted-foreground">
-                            Scene {(shot.order ?? 0) + 1} of {sortedShots.length}
-                          </p>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              Scene {(shot.order ?? 0) + 1} of {sortedShots.length}
+                            </span>
+                            <button
+                              type="button"
+                              className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted/80 shrink-0"
+                              onClick={() => setReorderOpen(true)}
+                              aria-label="Reorder or switch scene"
+                            >
+                              <GripVertical className="h-4 w-4" />
+                            </button>
+                            <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                              {isAssigned ? "1 assigned" : (mediaCountByShotId[shot._id] ?? 0) > 0 ? `${mediaCountByShotId[shot._id]} video${(mediaCountByShotId[shot._id] ?? 0) === 1 ? "" : "s"}` : "0 videos"}
+                            </span>
+                          </div>
                           <p className="text-sm font-medium text-foreground">{reportLabel}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {isAssigned ? "1 assigned" : (mediaCountByShotId[shot._id] ?? 0) > 0 ? `${mediaCountByShotId[shot._id]} video${(mediaCountByShotId[shot._id] ?? 0) === 1 ? "" : "s"}` : "0 videos"}
-                          </p>
                           <p className="text-xs text-muted-foreground">
                             Shot type: {SHOT_CATEGORIES.find((c) => c.value === shot.shotCategory)?.label ?? shot.shotCategory ?? "—"}
                           </p>
@@ -1175,18 +1206,26 @@ export default function ProjectPlanPage() {
       )}
 
       {reorderOpen && sortedShots.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center overflow-hidden" onClick={() => setReorderOpen(false)}>
-          <div className="bg-background rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col shadow-xl min-h-0" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center overflow-hidden" onClick={() => setReorderOpen(false)}>
+          <div className="bg-background rounded-t-2xl sm:rounded-2xl w-full max-w-md flex flex-col shadow-xl min-h-0 max-h-[min(80vh,calc(100vh-5rem))]" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b flex items-center justify-between shrink-0">
               <h3 className="font-semibold text-lg">Reorder scenes</h3>
               <Button variant="ghost" size="sm" onClick={() => setReorderOpen(false)}>Done</Button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 overscroll-contain" style={{ touchAction: "pan-y", overscrollBehavior: "contain" }}>
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-4 overscroll-contain" style={{ touchAction: "pan-y", overscrollBehavior: "contain" }}>
               <DndContext sensors={sensors} onDragEnd={handleReorderSheetDragEnd}>
                 <SortableContext items={reorderSheetShotIds} strategy={verticalListSortingStrategy}>
                   <ol className="space-y-2">
                     {sortedShots.map((shot, i) => (
-                      <ReorderSheetItem key={shot._id} shot={{ _id: shot._id, title: shot.title }} index={i} />
+                      <ReorderSheetItem
+                        key={shot._id}
+                        shot={{ _id: shot._id, title: shot.title }}
+                        index={i}
+                        onSelect={(id) => {
+                          setActiveShotId(id);
+                          setReorderOpen(false);
+                        }}
+                      />
                     ))}
                   </ol>
                 </SortableContext>
