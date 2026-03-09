@@ -73,6 +73,21 @@ function SceneThumbnail({
   );
 }
 
+/** Shows uploaded (not yet assigned) video by storageId using media.getUrl. Used in Capture overlay when card has savedState.uploadedStorageId. */
+function UploadedVideoPreview({ storageId }: { storageId: Id<"_storage"> }) {
+  const url = useQuery(api.media.getUrl, { storageId });
+  if (url === undefined) return <div className="aspect-video w-full rounded-lg bg-muted animate-pulse min-h-[160px]" />;
+  if (url === null) return <div className="aspect-video w-full rounded-lg bg-muted min-h-[160px] flex items-center justify-center text-sm text-muted-foreground">Video unavailable</div>;
+  return (
+    <video
+      src={url}
+      controls
+      playsInline
+      className="w-full max-h-[200px] rounded-lg object-contain bg-black"
+    />
+  );
+}
+
 function ReorderSheetItem({
   shot,
   index,
@@ -404,10 +419,22 @@ export default function ProjectPlanPage() {
   }, [newlyAddedShotId]);
 
   const [captureStateByShot, setCaptureStateByShot] = useState<Record<string, CaptureStateSnapshot>>({});
+  const [assignErrorShotId, setAssignErrorShotId] = useState<Id<"shots"> | null>(null);
+  const [assignErrorMessage, setAssignErrorMessage] = useState<string | null>(null);
   const onCaptureStateChange = useCallback((shotId: Id<"shots">, state: CaptureStateSnapshot) => {
     setCaptureStateByShot((prev) => ({ ...prev, [shotId]: state }));
   }, []);
   const pendingOpenCameraRef = useRef(false);
+  useEffect(() => {
+    setAssignErrorShotId(null);
+    setAssignErrorMessage(null);
+  }, [activeShotId]);
+
+  const handleAssigned = useCallback(() => {
+    pendingOpenCameraRef.current = false;
+    if (nextUnassignedAfterActive) setActiveShotId(nextUnassignedAfterActive._id);
+    else setActiveShotId(sortedShots[0]?._id ?? null);
+  }, [nextUnassignedAfterActive, sortedShots]);
 
   const {
     recordedBlob,
@@ -424,11 +451,7 @@ export default function ProjectPlanPage() {
   } = useShotCapture({
     currentShot: activeShot,
     projectId,
-    onAssigned: useCallback(() => {
-      pendingOpenCameraRef.current = false;
-      if (nextUnassignedAfterActive) setActiveShotId(nextUnassignedAfterActive._id);
-      else setActiveShotId(sortedShots[0]?._id ?? null);
-    }, [nextUnassignedAfterActive, sortedShots]),
+    onAssigned: handleAssigned,
     onCaptureStateChange,
   });
 
@@ -1186,7 +1209,59 @@ export default function ProjectPlanPage() {
                                     </div>
                                   )}
                                   {savedState.uploadedStorageId && !savedState.isUploading && (
-                                    <p className="text-sm text-muted-foreground">Video saved. Assign from this card when it has focus.</p>
+                                    <>
+                                      <UploadedVideoPreview storageId={savedState.uploadedStorageId} />
+                                      <div className="flex flex-wrap gap-2">
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => {
+                                            setCaptureStateByShot((prev) => {
+                                              const next = { ...prev };
+                                              delete next[shot._id];
+                                              return next;
+                                            });
+                                            setActiveShotId(shot._id);
+                                            pendingOpenCameraRef.current = true;
+                                            nativeCameraInputRef.current?.click();
+                                          }}
+                                        >
+                                          Recapture
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          onClick={async () => {
+                                            if (!savedState.uploadedStorageId) return;
+                                            try {
+                                              await linkScene({
+                                                shotId: shot._id,
+                                                storageId: savedState.uploadedStorageId,
+                                                duration: savedState.recordedDuration ?? 0,
+                                              });
+                                              setCaptureStateByShot((prev) => {
+                                                const next = { ...prev };
+                                                delete next[shot._id];
+                                                return next;
+                                              });
+                                              handleAssigned();
+                                            } catch (err) {
+                                              setAssignErrorShotId(shot._id);
+                                              setAssignErrorMessage(err instanceof Error ? err.message : "Assign failed.");
+                                            }
+                                          }}
+                                        >
+                                          Assign Video
+                                        </Button>
+                                        <Button type="button" variant="outline" size="sm" onClick={() => setReplaceModalShotId(shot._id)}>
+                                          Gallery
+                                        </Button>
+                                      </div>
+                                      {assignErrorShotId === shot._id && assignErrorMessage && (
+                                        <p className="text-sm text-destructive">{assignErrorMessage}</p>
+                                      )}
+                                    </>
                                   )}
                                   {savedState.error && <p className="text-sm text-destructive">{savedState.error}</p>}
                                 </div>

@@ -28,6 +28,7 @@ export type CaptureStateSnapshot = {
   isUploading: boolean;
   uploadProgress: number | null;
   uploadedStorageId: Id<"_storage"> | null;
+  recordedDuration?: number;
   error: string | null;
 };
 
@@ -217,6 +218,7 @@ export function useShotCapture({
       isUploading,
       uploadProgress,
       uploadedStorageId,
+      recordedDuration: recordedDurationRef.current,
       error,
     });
   }, [recordedBlobUrl, isUploading, uploadProgress, uploadedStorageId, error, onCaptureStateChange]);
