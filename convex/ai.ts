@@ -432,11 +432,18 @@ async function runLegacyFullVideoAnalysis(
       else throw e;
     }
   }
+  if (!base64 || base64.length < 100) {
+    throw new Error("Video data too small or missing; the file may be unsupported or failed to load.");
+  }
   const prompt = buildCombinedAnalysisPrompt(
     project.goalSummary,
     shot.title,
     shot.description
   );
+  const safeMimeType =
+    mimeType === "video/mp4" || mimeType === "video/webm"
+      ? mimeType
+      : "video/mp4";
   let list: { timestampSeconds: number; reason: string }[];
   let alignmentSummary: string;
   let pros: string[];
@@ -448,7 +455,7 @@ async function runLegacyFullVideoAnalysis(
       const result = await model.generateContent([
         {
           inlineData: {
-            mimeType: mimeType.startsWith("video/") ? mimeType : "video/mp4",
+            mimeType: safeMimeType,
             data: base64,
           },
         },

@@ -205,6 +205,9 @@ export const deleteProject = mutation({
     if (!userId) throw new Error("Not authenticated");
     const project = await ctx.db.get(args.projectId);
     if (!project || project.userId !== userId) throw new Error("Project not found");
+    if (project.locationImageStorageId) {
+      await ctx.storage.delete(project.locationImageStorageId);
+    }
     const shots = await ctx.db
       .query("shots")
       .withIndex("by_project_id", (q) => q.eq("projectId", args.projectId))
@@ -218,6 +221,9 @@ export const deleteProject = mutation({
       await ctx.db.delete(row._id);
     }
     for (const shot of shots) {
+      if (shot.sceneStorageId) {
+        await ctx.storage.delete(shot.sceneStorageId);
+      }
       await ctx.db.delete(shot._id);
     }
     const reflections = await ctx.db
