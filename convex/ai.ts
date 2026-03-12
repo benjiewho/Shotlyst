@@ -157,11 +157,12 @@ export const generatePlan = action({
 
         const prompt = `You are a pragmatic director for everyday creators. Output only valid JSON; no markdown or commentary.
 Audience: beginner-to-moderate creators. Keep the plan simple and lightweight.
+Keep goal, hook, style, and shot titles/descriptions actionable but flexible; avoid over-specific or niche wording unless the project brief clearly calls for it. Descriptions should work for a range of interpretations and creator styles.
 
 CONTENT: ${contentTypeHint} ${audienceLine}
 ${platformLine}
 
-SCENES: One hook, one wide/establishing, one or two action or detail shots. Use shotCategory: hook_shot, establishing_shot, action_shots, or detail_broll. Title = short location-relevant suggestion (e.g. "Coffee being poured", "Wide of the cafe"). Description = one short sentence only. Omit "purpose". Include exactly 4–5 shots (hard cap 5). Order: hook → establishing → action/detail.
+SCENES: One hook, one wide/establishing, one or two action or detail shots. Use shotCategory: hook_shot, establishing_shot, action_shots, or detail_broll. Title = short location-relevant suggestion (e.g. "Coffee being poured", "Wide of the cafe"). Description = one short sentence only. Omit "purpose". Include exactly 4–5 shots (hard cap 5). Order shots in the sequence the creator will film on location: start with establishing/wider shots (e.g. entering the place, wide of the space), then action (e.g. ordering, receiving), then close-ups and detail/b-roll. The final video can reorder these when editing; this list is for shooting.
 
 Output a JSON object with this exact structure:
 {

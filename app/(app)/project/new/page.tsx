@@ -163,7 +163,7 @@ export default function NewProjectPage() {
                 <label htmlFor="location" className="text-sm font-medium text-foreground block mb-1.5">
                   Location
                 </label>
-                <p className="text-xs text-muted-foreground mb-1.5">Where are you?</p>
+                <p className="text-xs text-muted-foreground mb-1.5">Where do you plan to film?</p>
                 <Input
                   id="location"
                   value={location}

@@ -792,7 +792,10 @@ export default function ProjectPlanPage() {
 
         <Card className={cn(shotListViewMode === "capture" && "flex flex-col min-h-0")}>
           <CardHeader className="flex flex-row items-center justify-between gap-2 flex-shrink-0">
-            <CardTitle className="text-base">Shot list</CardTitle>
+            <div>
+              <CardTitle className="text-base">Shot list</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">Film in this order.</p>
+            </div>
             <div className="flex items-center gap-2">
               <div className="flex rounded-lg border border-input bg-muted/50 p-0.5">
                 <button
@@ -1018,6 +1021,7 @@ export default function ProjectPlanPage() {
           <header className="flex-shrink-0 flex flex-row items-center justify-between gap-2 border-b border-border px-4 py-3">
             <div>
               <p className="text-base font-semibold text-foreground">Shot list</p>
+              <p className="text-xs text-muted-foreground">Film in this order.</p>
               <p className="text-xs text-muted-foreground tabular-nums">
                 {sortedShots.filter((s) => s.status === "captured").length} / {sortedShots.length} captured
               </p>
