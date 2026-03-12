@@ -68,6 +68,22 @@ function titleToCategory(title: string): ShotCategory {
   return "establishing_shot";
 }
 
+/** Filming order: establishing first, then action, then detail/b-roll, then hook. */
+const FILMING_ORDER: Record<ShotCategory, number> = {
+  establishing_shot: 0,
+  action_shots: 1,
+  detail_broll: 2,
+  hook_shot: 3,
+};
+
+function sortShotsForFilmingOrder(shots: ShotInput[]): ShotInput[] {
+  return [...shots].sort((a, b) => {
+    const catA = a.shotCategory ?? titleToCategory(a.title);
+    const catB = b.shotCategory ?? titleToCategory(b.title);
+    return (FILMING_ORDER[catA] ?? 0) - (FILMING_ORDER[catB] ?? 0);
+  });
+}
+
 function parsePlanFromGemini(text: string): {
   goalSummary: string;
   suggestedHook: string;
@@ -162,7 +178,7 @@ Keep goal, hook, style, and shot titles/descriptions actionable but flexible; av
 CONTENT: ${contentTypeHint} ${audienceLine}
 ${platformLine}
 
-SCENES: One hook, one wide/establishing, one or two action or detail shots. Use shotCategory: hook_shot, establishing_shot, action_shots, or detail_broll. Title = short location-relevant suggestion (e.g. "Coffee being poured", "Wide of the cafe"). Description = one short sentence only. Omit "purpose". Include exactly 4–5 shots (hard cap 5). Order shots in the sequence the creator will film on location: start with establishing/wider shots (e.g. entering the place, wide of the space), then action (e.g. ordering, receiving), then close-ups and detail/b-roll. The final video can reorder these when editing; this list is for shooting.
+SCENES: Use shotCategory: hook_shot, establishing_shot, action_shots, or detail_broll. Title = short location-relevant suggestion (e.g. "Coffee being poured", "Wide of the cafe"). Description = one short sentence only. Omit "purpose". Include exactly 4 or 5 shots — never more than 5. The FIRST shot in your list MUST be an establishing_shot (wide shot, entering the place, or wide of the space). Then list action shots (e.g. ordering, receiving), then detail/b-roll close-ups, then hook last. This is filming order: the creator shoots in this sequence on location.
 
 Output a JSON object with this exact structure:
 {
@@ -178,7 +194,9 @@ Project brief:
 - Location: ${project.location}
 - Content type: ${project.contentType}
 - Video goal: ${project.videoGoal}
-- Audience: ${project.audience.join(", ")}`;
+- Audience: ${project.audience.join(", ")}
+
+Use the project brief above (and the location photo if attached) as the user's context. Before drafting the plan, consider: (1) What is interesting here? (2) What emotion does this place have? (3) What story could the creator tell in about 20 seconds? Use those answers to shape goalSummary, suggestedHook, recommendedStyle, and shots so the plan is varied, unique, and built around one clear short story. If the location is a known place, use your knowledge of what it is and what it's known for to tailor the plan.`;
 
         let locationPhotoPrompt = prompt;
         if (project.locationImageStorageId) {
@@ -227,7 +245,7 @@ ${prompt}`;
         const text = response.text();
         if (!text) throw new Error("Empty response from Gemini");
         plan = parsePlanFromGemini(text);
-        plan.shots = plan.shots.slice(0, 5);
+        plan.shots = sortShotsForFilmingOrder(plan.shots).slice(0, 5);
         planSource = "gemini";
       } catch (e) {
         plan = STUB_PLAN;
