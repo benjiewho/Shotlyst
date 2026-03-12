@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import Link from "next/link";
-import { useMutation, useAction, useQuery } from "convex/react";
+import { useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useRouter } from "next/navigation";
@@ -19,28 +19,26 @@ const CONTENT_TYPES = [
 
 const AUDIENCE_OPTIONS = ["Travelers", "Locals", "Foodies", "Adventure", "Culture"];
 
-function getVideoGoalPlaceholder(
-  contentType: string,
-  creatorLevel: string | undefined,
-  location: string
-): string {
-  const loc = location.trim() || "this place";
-  const ct = contentType === "tiktok" ? "TikTok" : contentType === "youtube_short" ? "YouTube Short" : "Travel Diary";
-  if (creatorLevel === "beginner" || !creatorLevel) {
-    if (contentType === "tiktok") return `e.g. Show the vibe of ${loc} in 15 seconds for travelers.`;
-    if (contentType === "youtube_short") return `e.g. A quick tour of ${loc} that hooks viewers in the first 3 seconds.`;
-    return `e.g. Capture the feel of ${loc} in a short diary-style clip.`;
-  }
-  if (creatorLevel === "experienced") {
-    if (contentType === "travel_diary") return `e.g. Tell a short story that makes viewers want to visit ${loc}.`;
-    return `e.g. Create a punchy ${ct} that drives saves and shares.`;
-  }
-  return `e.g. What do you want this ${ct} to achieve? Who is it for?`;
-}
+const STORY_FORMATS = [
+  { value: "discovery", label: "Discovery" },
+  { value: "review", label: "Review" },
+  { value: "hidden_gem", label: "Hidden Gem" },
+  { value: "what_i_ordered", label: "What I Ordered / Tried" },
+  { value: "vibe_atmosphere", label: "Vibe / Atmosphere" },
+  { value: "quick_recommendation", label: "Quick Recommendation" },
+] as const;
+
+const STORY_FORMAT_TO_GOAL: Record<string, string> = {
+  discovery: "Show what this place is like and why it stands out.",
+  review: "Review this place and help viewers decide if it's worth visiting.",
+  hidden_gem: "Show why this place feels like a hidden gem.",
+  what_i_ordered: "Show what I ordered/tried and the experience.",
+  vibe_atmosphere: "Capture the vibe and atmosphere of this place.",
+  quick_recommendation: "Give a quick visual recommendation of this place.",
+};
 
 export default function NewProjectPage() {
   const router = useRouter();
-  const user = useQuery(api.users.getMe);
   const createProject = useMutation(api.projects.create);
   const generatePlan = useAction(api.ai.generatePlan);
   const generateUploadUrl = useMutation(api.shots.generateUploadUrl);
@@ -48,7 +46,9 @@ export default function NewProjectPage() {
 
   const [location, setLocation] = useState("");
   const [contentType, setContentType] = useState<"tiktok" | "youtube_short" | "travel_diary">("tiktok");
-  const [videoGoal, setVideoGoal] = useState("");
+  const [storyFormat, setStoryFormat] = useState<string | null>(null);
+  const [customGoal, setCustomGoal] = useState("");
+  const [customGoalExpanded, setCustomGoalExpanded] = useState(false);
   const [audience, setAudience] = useState<string[]>([]);
   const [locationImageStorageId, setLocationImageStorageId] = useState<Id<"_storage"> | null>(null);
   const [locationImagePreviewUrl, setLocationImagePreviewUrl] = useState<string | null>(null);
@@ -109,27 +109,19 @@ export default function NewProjectPage() {
     setLocationImageStorageId(null);
   };
 
-  const videoGoalPlaceholder = getVideoGoalPlaceholder(
-    contentType,
-    user?.creatorLevel,
-    location
-  );
+  const effectiveVideoGoal =
+    customGoal.trim() || (storyFormat ? STORY_FORMAT_TO_GOAL[storyFormat] ?? "" : "") || "";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     const trimmedLocation = location.trim();
-    const trimmedGoal = videoGoal.trim();
     if (!trimmedLocation) {
       setError("Location is required.");
       return;
     }
-    if (!trimmedGoal) {
-      setError("Video goal is required.");
-      return;
-    }
-    if (audience.length === 0) {
-      setError("Select at least one audience.");
+    if (!effectiveVideoGoal) {
+      setError("Pick a story format or add a custom goal.");
       return;
     }
     setIsSubmitting(true);
@@ -141,7 +133,7 @@ export default function NewProjectPage() {
         name,
         location: trimmedLocation,
         contentType,
-        videoGoal: trimmedGoal,
+        videoGoal: effectiveVideoGoal,
         audience,
         ...(locationImageStorageId ? { locationImageStorageId } : {}),
       });
@@ -171,6 +163,7 @@ export default function NewProjectPage() {
                 <label htmlFor="location" className="text-sm font-medium text-foreground block mb-1.5">
                   Location
                 </label>
+                <p className="text-xs text-muted-foreground mb-1.5">Where are you?</p>
                 <Input
                   id="location"
                   value={location}
@@ -230,6 +223,7 @@ export default function NewProjectPage() {
               <label htmlFor="contentType" className="text-sm font-medium text-foreground block mb-1.5">
                 Content type
               </label>
+              <p className="text-xs text-muted-foreground mb-1.5">Where you plan to share.</p>
               <select
                 id="contentType"
                 value={contentType}
@@ -247,26 +241,32 @@ export default function NewProjectPage() {
               </select>
             </div>
             <div>
-              <label htmlFor="videoGoal" className="text-sm font-medium text-foreground block mb-1.5">
-                Video goal
-              </label>
-              <p className="text-xs text-muted-foreground mb-1.5">
-                Describe what you want this video to achieve.
-              </p>
-              <textarea
-                id="videoGoal"
-                value={videoGoal}
-                onChange={(e) => setVideoGoal(e.target.value)}
-                placeholder={videoGoalPlaceholder}
-                rows={4}
-                className="flex w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 min-h-[88px]"
-                disabled={isSubmitting}
-              />
+              <span className="text-sm font-medium text-foreground block mb-0.5">Story format</span>
+              <p className="text-xs text-muted-foreground mb-1.5">Pick a direction for your video.</p>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Story format">
+                {STORY_FORMATS.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setStoryFormat(value)}
+                    disabled={isSubmitting}
+                    className={cn(
+                      "min-h-11 rounded-xl px-4 text-sm font-medium border transition-colors",
+                      storyFormat === value
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background border-border text-foreground hover:bg-muted"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div>
               <span className="text-sm font-medium text-foreground block mb-1.5">
-                Audience <span className="text-muted-foreground font-normal">(select at least one)</span>
+                Audience <span className="text-muted-foreground font-normal">(optional)</span>
               </span>
+              <p className="text-xs text-muted-foreground mb-1.5">Who&apos;s it for? Optional.</p>
               <div className="flex flex-wrap gap-2">
                 {AUDIENCE_OPTIONS.map((option) => (
                   <button
@@ -285,6 +285,33 @@ export default function NewProjectPage() {
                   </button>
                 ))}
               </div>
+            </div>
+            <div>
+              <button
+                type="button"
+                className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2"
+                onClick={() => setCustomGoalExpanded((v) => !v)}
+                disabled={isSubmitting}
+                aria-expanded={customGoalExpanded}
+              >
+                {customGoalExpanded ? "Hide custom goal" : "Add custom goal (optional)"}
+              </button>
+              {customGoalExpanded && (
+                <div className="mt-2">
+                  <label htmlFor="customGoal" className="sr-only">
+                    Custom video goal
+                  </label>
+                  <textarea
+                    id="customGoal"
+                    value={customGoal}
+                    onChange={(e) => setCustomGoal(e.target.value)}
+                    placeholder="e.g. Your own take on this video…"
+                    rows={3}
+                    className="flex w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 min-h-[72px]"
+                    disabled={isSubmitting}
+                  />
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
