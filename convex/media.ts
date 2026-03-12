@@ -16,6 +16,13 @@ export const saveToLibrary = mutation({
     if (!project || project.userId !== userId) throw new Error("Project not found");
     const shot = await ctx.db.get(args.shotId);
     if (!shot || shot.projectId !== args.projectId) throw new Error("Shot not found");
+    const existing = await ctx.db
+      .query("media")
+      .withIndex("by_shot_id", (q) => q.eq("shotId", args.shotId))
+      .collect();
+    if (existing.length >= 2) {
+      throw new Error("This scene can have at most 2 videos. Remove one to add another.");
+    }
     const now = Date.now();
     return await ctx.db.insert("media", {
       userId,

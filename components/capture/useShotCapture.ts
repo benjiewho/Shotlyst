@@ -5,6 +5,9 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+const MAX_VIDEO_SECONDS = 60;
+
 export type ShotForCapture = {
   _id: Id<"shots">;
   title: string;
@@ -86,7 +89,7 @@ export function useShotCapture({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordedBlob]);
 
-  // Auto-upload when we have a blob and a shot: upload + saveToLibrary, then store storageId (once per blob)
+  // Auto-upload when we have a blob and a shot: check size/duration, then upload + saveToLibrary (once per blob)
   useEffect(() => {
     if (!recordedBlob || !projectId) return;
     const shotId = captureShotIdRef.current;
@@ -103,6 +106,21 @@ export function useShotCapture({
 
     (async () => {
       try {
+        if (recordedBlob.size > MAX_VIDEO_BYTES) {
+          setError("Video file is too large.");
+          return;
+        }
+        // Wait for duration from video metadata before uploading
+        for (let i = 0; i < 50 && recordedDurationRef.current === 0 && !cancelled && !retakenRef.current; i++) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        const duration = Math.round(recordedDurationRef.current);
+        if (duration > MAX_VIDEO_SECONDS) {
+          setError("Video must be 1 minute or less.");
+          return;
+        }
+        if (cancelled || retakenRef.current) return;
+
         const uploadUrl = await generateUploadUrl();
         const contentType = recordedBlob.type.split(";")[0].trim() || "video/webm";
         const storageId = await new Promise<Id<"_storage">>((resolve, reject) => {
@@ -136,11 +154,6 @@ export function useShotCapture({
         });
 
         if (cancelled || retakenRef.current) return;
-        // Brief wait for duration from video metadata if not yet set
-        for (let i = 0; i < 50 && recordedDurationRef.current === 0 && !cancelled && !retakenRef.current; i++) {
-          await new Promise((r) => setTimeout(r, 100));
-        }
-        const duration = Math.round(recordedDurationRef.current);
         await saveToLibrary({
           projectId,
           shotId,

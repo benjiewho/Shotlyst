@@ -161,6 +161,8 @@ function SortableShotRow({
   isSelectedForAutoplay?: boolean;
 }) {
   const isUnassigned = shot.status !== "captured";
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const hasPurpose = !!(shot.purpose && shot.purpose.trim());
   const {
     attributes,
     listeners,
@@ -290,6 +292,8 @@ function SortableShotRow({
               variant="outline"
               size="sm"
               onClick={onSetActiveShot}
+              disabled={(videoCount ?? 0) >= 2}
+              title={(videoCount ?? 0) >= 2 ? "Max 2 videos per scene. Remove one to add another." : undefined}
             >
               Add video
             </Button>
@@ -308,6 +312,20 @@ function SortableShotRow({
               rows={5}
             />
           </div>
+          {hasPurpose && (
+            <div className="w-full">
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setDetailsExpanded((v) => !v)}
+              >
+                {detailsExpanded ? "Hide details" : "Details"}
+              </button>
+              {detailsExpanded && (
+                <p className="text-xs text-muted-foreground mt-1 italic">{shot.purpose}</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -354,6 +372,7 @@ export default function ProjectPlanPage() {
   const [shotListViewMode, setShotListViewMode] = useState<"editor" | "capture">("editor");
   const [reorderOpen, setReorderOpen] = useState(false);
   const [newlyAddedShotId, setNewlyAddedShotId] = useState<Id<"shots"> | null>(null);
+  const [planDetailsExpanded, setPlanDetailsExpanded] = useState(false);
   const regenerateHook = useAction(api.ai.regenerateHook);
   const regenerateStyle = useAction(api.ai.regenerateStyle);
 
@@ -622,7 +641,6 @@ export default function ProjectPlanPage() {
   };
 
   const planSourceLabel = project.planSource === "gemini" ? "Gemini" : project.planSource === "stub" ? "Stub template" : "Unknown";
-  const planUpdatedAt = project.updatedAt ? new Date(project.updatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null;
 
   return (
     <div className="p-4 max-w-2xl mx-auto pb-8">
@@ -630,20 +648,16 @@ export default function ProjectPlanPage() {
         <p className="text-sm font-medium text-foreground">Your plan is ready</p>
       </div>
 
-      <div className="mb-4 rounded-lg bg-muted/60 border border-border px-3 py-2 text-xs text-muted-foreground flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div>
-          <p><span className="font-medium text-foreground">Scene Generation by AI model:</span> {planSourceLabel}</p>
-          {planUpdatedAt && <p>Plan updated: {planUpdatedAt}</p>}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            disabled={isRegeneratingPlan}
-            onClick={() => setRegenerateDialogMode("regenerate")}
-          >
-            {isRegeneratingPlan ? "Regenerating…" : "Regenerate"}
-          </Button>
-        </div>
+      <div className="mb-4 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>Plan by {planSourceLabel}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={isRegeneratingPlan}
+          onClick={() => setRegenerateDialogMode("regenerate")}
+        >
+          {isRegeneratingPlan ? "Regenerating…" : "Regenerate"}
+        </Button>
       </div>
 
       <AlertDialog open={regenerateDialogMode !== null} onOpenChange={(open) => !open && setRegenerateDialogMode(null)}>
@@ -666,14 +680,14 @@ export default function ProjectPlanPage() {
       <div className="space-y-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Goal</CardTitle>
+            <CardTitle className="text-base">Plan summary</CardTitle>
             {editing !== "goal" && (
               <Button variant="ghost" size="sm" onClick={() => startEdit("goal")}>
-                Edit
+                Edit goal
               </Button>
             )}
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             {editing === "goal" ? (
               <div className="space-y-2">
                 <textarea
@@ -697,78 +711,82 @@ export default function ProjectPlanPage() {
                 <p className="text-xs text-muted-foreground">Save & Regenerate saves your goal and replaces the full plan (clears current shots and videos).</p>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                {project.goalSummary || "No goal summary."}
-              </p>
+              <>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                  {project.goalSummary || "No goal summary."}
+                </p>
+                <div className="space-y-1 text-sm text-muted-foreground">
+                  <p><span className="font-medium text-foreground">Hook:</span> {(project.suggestedHook || "No hook suggested.").split(/\n/)[0]}</p>
+                  <p><span className="font-medium text-foreground">Style:</span> {(project.recommendedStyle || "No style notes.").split(/\n/)[0]}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => setPlanDetailsExpanded((v) => !v)}
+                >
+                  {planDetailsExpanded ? "Hide details" : "See details"}
+                </Button>
+                {planDetailsExpanded && (
+                  <div className="space-y-3 pt-2 border-t border-border">
+                    <div className="flex flex-row items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-medium text-foreground mb-0.5">Suggested hook</p>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{project.suggestedHook || "No hook suggested."}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={regeneratingHook}
+                        onClick={async () => {
+                          if (!projectId || regenerateInFlightRef.current) return;
+                          regenerateInFlightRef.current = true;
+                          setRegeneratingHook(true);
+                          try {
+                            const result = await regenerateHook({ projectId });
+                            if (!result?.success) console.warn("Hook regeneration did not update.");
+                          } catch (e) {
+                            console.error("Regenerate hook failed:", e);
+                          } finally {
+                            regenerateInFlightRef.current = false;
+                            setRegeneratingHook(false);
+                          }
+                        }}
+                      >
+                        {regeneratingHook ? "Refreshing…" : "Refresh"}
+                      </Button>
+                    </div>
+                    <div className="flex flex-row items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-medium text-foreground mb-0.5">Recommended style</p>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{project.recommendedStyle || "No style notes."}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={regeneratingStyle}
+                        onClick={async () => {
+                          if (!projectId || regenerateInFlightRef.current) return;
+                          regenerateInFlightRef.current = true;
+                          setRegeneratingStyle(true);
+                          try {
+                            const result = await regenerateStyle({ projectId });
+                            if (!result?.success) console.warn("Style regeneration did not update.");
+                          } catch (e) {
+                            console.error("Regenerate style failed:", e);
+                          } finally {
+                            regenerateInFlightRef.current = false;
+                            setRegeneratingStyle(false);
+                          }
+                        }}
+                      >
+                        {regeneratingStyle ? "Refreshing…" : "Refresh"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Suggested hook</CardTitle>
-            <Button
-              size="sm"
-              disabled={regeneratingHook}
-              onClick={async () => {
-                if (!projectId) return;
-                if (regenerateInFlightRef.current) return;
-                regenerateInFlightRef.current = true;
-                setRegeneratingHook(true);
-                try {
-                  const result = await regenerateHook({ projectId });
-                  if (!result?.success) {
-                    console.warn("Hook regeneration did not update.");
-                  }
-                } catch (e) {
-                  console.error("Regenerate hook failed:", e);
-                } finally {
-                  regenerateInFlightRef.current = false;
-                  setRegeneratingHook(false);
-                }
-              }}
-            >
-              {regeneratingHook ? "Refreshing…" : "Refresh"}
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-              {project.suggestedHook || "No hook suggested."}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Recommended style</CardTitle>
-            <Button
-              size="sm"
-              disabled={regeneratingStyle}
-              onClick={async () => {
-                if (!projectId) return;
-                if (regenerateInFlightRef.current) return;
-                regenerateInFlightRef.current = true;
-                setRegeneratingStyle(true);
-                try {
-                  const result = await regenerateStyle({ projectId });
-                  if (!result?.success) {
-                    console.warn("Style regeneration did not update.");
-                  }
-                } catch (e) {
-                  console.error("Regenerate style failed:", e);
-                } finally {
-                  regenerateInFlightRef.current = false;
-                  setRegeneratingStyle(false);
-                }
-              }}
-            >
-              {regeneratingStyle ? "Refreshing…" : "Refresh"}
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-              {project.recommendedStyle || "No style notes."}
-            </p>
           </CardContent>
         </Card>
 
@@ -921,6 +939,7 @@ export default function ProjectPlanPage() {
                                 reviewVideoRef={reviewVideoRef}
                                 assignedVideoInLibrary={assignedVideoInLibrary}
                                 compact
+                                addVideoDisabled={(mediaCountByShotId[shot._id] ?? 0) >= 2}
                               />
                             ) : (
                               <div className="flex flex-col sm:flex-row gap-2 w-full max-w-xs">
@@ -928,7 +947,10 @@ export default function ProjectPlanPage() {
                                   type="button"
                                   size="default"
                                   className="min-h-11 min-h-[44px]"
+                                  disabled={(mediaCountByShotId[shot._id] ?? 0) >= 2}
+                                  title={(mediaCountByShotId[shot._id] ?? 0) >= 2 ? "Max 2 videos per scene. Remove one to add another." : undefined}
                                   onClick={() => {
+                                    if ((mediaCountByShotId[shot._id] ?? 0) >= 2) return;
                                     pendingOpenCameraRef.current = true;
                                     setActiveShotId(shot._id);
                                   }}
@@ -1123,6 +1145,7 @@ export default function ProjectPlanPage() {
                                   compact
                                   hideInstructionText
                                   primaryButtonLabel="Add video"
+                                  addVideoDisabled={(mediaCountByShotId[shot._id] ?? 0) >= 2}
                                 />
                                 <div className="space-y-1 mt-3">
                                   <label className="text-xs font-medium text-foreground">Notes &amp; reminders</label>
@@ -1156,10 +1179,10 @@ export default function ProjectPlanPage() {
                                     <Button
                                       type="button"
                                       size="sm"
-                                      onClick={analyzingShotId === shot._id ? undefined : () => handleGetAIAnalysis(shot._id)}
-                                      disabled={analyzingShotId === shot._id}
+                                      disabled
+                                      title="Coming soon"
                                     >
-                                      {analyzingShotId === shot._id ? "Analyzing…" : "Get AI Analysis"}
+                                      Get AI Analysis
                                     </Button>
                                   )}
                                   {shot.strongMoments && shot.strongMoments.length > 0 ? (
@@ -1216,7 +1239,10 @@ export default function ProjectPlanPage() {
                                           type="button"
                                           variant="outline"
                                           size="sm"
+                                          disabled={(mediaCountByShotId[shot._id] ?? 0) >= 2}
+                                          title={(mediaCountByShotId[shot._id] ?? 0) >= 2 ? "Max 2 videos per scene. Remove one to add another." : undefined}
                                           onClick={() => {
+                                            if ((mediaCountByShotId[shot._id] ?? 0) >= 2) return;
                                             setCaptureStateByShot((prev) => {
                                               const next = { ...prev };
                                               delete next[shot._id];
@@ -1286,7 +1312,10 @@ export default function ProjectPlanPage() {
                                     type="button"
                                     size="default"
                                     className="min-h-11 min-h-[44px]"
+                                    disabled={(mediaCountByShotId[shot._id] ?? 0) >= 2}
+                                    title={(mediaCountByShotId[shot._id] ?? 0) >= 2 ? "Max 2 videos per scene. Remove one to add another." : undefined}
                                     onClick={() => {
+                                      if ((mediaCountByShotId[shot._id] ?? 0) >= 2) return;
                                       pendingOpenCameraRef.current = true;
                                       setActiveShotId(shot._id);
                                       nativeCameraInputRef.current?.click();
@@ -1331,10 +1360,10 @@ export default function ProjectPlanPage() {
                                   <Button
                                     type="button"
                                     size="sm"
-                                    onClick={analyzingShotId === shot._id ? undefined : () => handleGetAIAnalysis(shot._id)}
-                                    disabled={analyzingShotId === shot._id}
+                                    disabled
+                                    title="Coming soon"
                                   >
-                                    {analyzingShotId === shot._id ? "Analyzing…" : "Get AI Analysis"}
+                                    Get AI Analysis
                                   </Button>
                                 )}
                                 {shot.strongMoments && shot.strongMoments.length > 0 ? (

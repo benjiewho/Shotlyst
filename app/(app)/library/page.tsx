@@ -39,6 +39,14 @@ function formatDate(ms: number): string {
   return d.toLocaleDateString();
 }
 
+function sanitizeForFilename(s: string): string {
+  return s
+    .replace(/[^\w\s-]/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "") || "video";
+}
+
 function MediaThumbnail({
   storageId,
   duration,
@@ -48,6 +56,8 @@ function MediaThumbnail({
   onDelete,
   projectId,
   shotId,
+  projectName,
+  shotTitle,
   disabled,
 }: {
   storageId: Id<"_storage">;
@@ -58,6 +68,8 @@ function MediaThumbnail({
   onDelete: () => void;
   projectId: Id<"projects">;
   shotId: Id<"shots">;
+  projectName: string;
+  shotTitle: string;
   disabled?: boolean;
 }) {
   const url = useQuery(api.media.getUrl, { storageId });
@@ -74,7 +86,9 @@ function MediaThumbnail({
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = blobUrl;
-      a.download = `shotlyst-video-${storageId}.mp4`;
+      const filePart = String(storageId).replace(/\W/g, "").slice(-8) || "video";
+      const base = `shotlyst_${sanitizeForFilename(projectName)}_${sanitizeForFilename(shotTitle)}_${filePart}`;
+      a.download = `${base}.mp4`;
       a.click();
       URL.revokeObjectURL(blobUrl);
     } catch {
@@ -82,7 +96,7 @@ function MediaThumbnail({
     } finally {
       setDownloading(false);
     }
-  }, [url, storageId]);
+  }, [url, storageId, projectName, shotTitle]);
 
   if (url === undefined) {
     return (
@@ -295,6 +309,8 @@ export default function LibraryPage() {
                               isAssigned={shot.assignedStorageId === m.storageId}
                               projectId={project.projectId as Id<"projects">}
                               shotId={shot.shotId as Id<"shots">}
+                              projectName={project.projectName}
+                              shotTitle={shot.shotTitle}
                               disabled={assigningMediaId !== null}
                               onAssign={async () => {
                                 setAssigningMediaId(m.mediaId as Id<"media">);

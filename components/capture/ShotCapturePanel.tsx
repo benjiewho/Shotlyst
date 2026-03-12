@@ -43,6 +43,9 @@ export type ShotCapturePanelProps = {
   hideInstructionText?: boolean;
   /** Label for the primary (camera) button, e.g. "Add video" instead of "Open camera" */
   primaryButtonLabel?: string;
+  /** When true, disable the primary (camera) button and show addVideoDisabledHint */
+  addVideoDisabled?: boolean;
+  addVideoDisabledHint?: string;
 };
 
 export function ShotCapturePanel({
@@ -73,6 +76,8 @@ export function ShotCapturePanel({
   compact,
   hideInstructionText,
   primaryButtonLabel = "Open camera",
+  addVideoDisabled = false,
+  addVideoDisabledHint = "Max 2 videos per scene. Remove one to add another.",
 }: ShotCapturePanelProps) {
   if (!shot) return null;
 
@@ -101,6 +106,8 @@ export function ShotCapturePanel({
                 size={compact ? "default" : "lg"}
                 className="min-h-11 min-h-[44px]"
                 onClick={onOpenCamera}
+                disabled={addVideoDisabled}
+                title={addVideoDisabled ? addVideoDisabledHint : undefined}
               >
                 {primaryButtonLabel}
               </Button>
@@ -223,10 +230,10 @@ export function ShotCapturePanel({
               <Button
                 type="button"
                 size="sm"
-                onClick={isAnalyzing ? undefined : onGetAIAnalysis}
-                disabled={isAnalyzing}
+                disabled
+                title="Coming soon"
               >
-                {isAnalyzing ? "Analyzing…" : "Get AI Analysis"}
+                Get AI Analysis
               </Button>
             </div>
           )}

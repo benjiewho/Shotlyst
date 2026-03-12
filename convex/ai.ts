@@ -26,23 +26,27 @@ const STUB_PLAN = {
   shots: [
     {
       type: "must" as const,
-      shotCategory: "establishing_shot" as ShotCategory,
-      title: "Wide of the space",
-      description: "Wide shot of the location to set the scene.",
-      purpose: "Set context so viewers know where we are.",
+      shotCategory: "hook_shot" as ShotCategory,
+      title: "Opening hook",
+      description: "Grab attention in the first 1–2 seconds.",
     },
     {
       type: "must" as const,
-      shotCategory: "detail_broll" as ShotCategory,
-      title: "Key detail or product close-up",
-      description: "Close-up of a key element (dish, view, or activity).",
-      purpose: "Add texture and a moment to lean in.",
+      shotCategory: "establishing_shot" as ShotCategory,
+      title: "Wide of the space",
+      description: "Wide shot of the location to set the scene.",
     },
     {
-      type: "nice" as const,
+      type: "must" as const,
       shotCategory: "action_shots" as ShotCategory,
       title: "Reaction or moment",
       description: "Genuine reaction or transition to keep it authentic.",
+    },
+    {
+      type: "nice" as const,
+      shotCategory: "detail_broll" as ShotCategory,
+      title: "Key detail close-up",
+      description: "Close-up of a key element (dish, view, or activity).",
     },
   ],
 };
@@ -152,21 +156,12 @@ export const generatePlan = action({
               : "Platform: Travel — location reveal, cultural detail, personal moment, atmosphere.";
 
         const prompt = `You are a pragmatic director for everyday creators. Output only valid JSON; no markdown or commentary.
-Audience: beginner-to-moderate creators. Keep the plan simple and not overwhelming. Short, clear descriptions (1–2 sentences per shot). Avoid long paragraphs or dense jargon.
+Audience: beginner-to-moderate creators. Keep the plan simple and lightweight.
 
 CONTENT: ${contentTypeHint} ${audienceLine}
 ${platformLine}
 
-SCENE STRATEGY (use these categories):
-- hook_shot: immediate value, curiosity, pattern interrupt.
-- establishing_shot: context, environment, wide.
-- action_shots: movement, result, energy, climax.
-- detail_broll: close-ups, texture, cutaways, coverage.
-
-SPECIFICITY: Be concrete and shootable. For each shot, "title" is a short, location-relevant suggestion (e.g. "Coffee being poured", "Wide of the cafe", "Pastry close-up") — never the category name. "description": one short sentence max — one cue like angle, movement, or moment. No long lists or over-explaining.
-
-VARIETY: Mix wide/close and static/movement. Keep it simple.
-ORDER: Hook → establishing → main action → detail/b-roll → closing if needed. Include 5–8 shots (hard cap 10). Prefer "must" for essential shots, "nice" or "optional" for extras.
+SCENES: One hook, one wide/establishing, one or two action or detail shots. Use shotCategory: hook_shot, establishing_shot, action_shots, or detail_broll. Title = short location-relevant suggestion (e.g. "Coffee being poured", "Wide of the cafe"). Description = one short sentence only. Omit "purpose". Include exactly 4–5 shots (hard cap 5). Order: hook → establishing → action/detail.
 
 Output a JSON object with this exact structure:
 {
@@ -174,7 +169,7 @@ Output a JSON object with this exact structure:
   "suggestedHook": "One concrete hook idea for the first 1-2 seconds",
   "recommendedStyle": "Brief style notes (pacing, tone, length)",
   "shots": [
-    { "type": "must|nice|optional", "shotCategory": "hook_shot|establishing_shot|action_shots|detail_broll", "title": "Specific location-relevant suggestion", "description": "What to film; optional concrete cue", "purpose": "Optional one-line why this shot" }
+    { "type": "must|nice|optional", "shotCategory": "hook_shot|establishing_shot|action_shots|detail_broll", "title": "Specific location-relevant suggestion", "description": "One short sentence: what to film" }
   ]
 }
 
@@ -231,6 +226,7 @@ ${prompt}`;
         const text = response.text();
         if (!text) throw new Error("Empty response from Gemini");
         plan = parsePlanFromGemini(text);
+        plan.shots = plan.shots.slice(0, 5);
         planSource = "gemini";
       } catch (e) {
         plan = STUB_PLAN;
